@@ -1,11 +1,13 @@
 {
-  "name": "humidefi-testnet",
-  "id": "humidefi-testnet",
+  "name": "HumidefiTestnet",
+  "id": "HumidefiTestnet",
   "chainType": "Local",
   "bootNodes": [],
   "telemetryEndpoints": null,
   "protocolId": null,
-  "properties": null,
+  "properties": {
+    "tokenSymbol":"UMI"
+  },
   "codeSubstitutes": {},
   "genesis": {
     "runtime": {
@@ -14,18 +16,13 @@
       },
       "aura": {
         "authorities": [
-          "5FUewU9XbL7h5VyshEb5fTA5Hnuz4o1NziS8Peq5etzxahhZ",
-          "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
+          "5HY87iKg8b567Fx8w4VMrNmiWhELbcuMoJpGDHHaFenHpVTb"
         ]
       },
       "grandpa": {
         "authorities": [
           [
-            "5E1NuVcrVsLx96UT1UhjGMQEhRMUzBR6sWuNkFhz23yz27eG",
-            1
-          ],
-          [
-            "5GoNkf6WdbxCFnPdAnYYQyCjAKPJgLNxXwPjwTh6DGg6gN3E",
+            "5G44sYJagWPZB415jdiagquPHLjP17eGBsb9SWDxVmfVdHEs",
             1
           ]
         ]
@@ -33,58 +30,14 @@
       "balances": {
         "balances": [
           [
-            "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
-            1152921504606846976
-          ],
-          [
-            "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty",
-            1152921504606846976
-          ],
-          [
-            "5FLSigC9HGRKVhB9FiEo4Y3koPsNmBmLJbpXg2mp1hXcS59Y",
-            1152921504606846976
-          ],
-          [
-            "5DAAnrj7VHTznn2AWBemMuyBwZWs6FNFjdyVXUeYum3PTXFy",
-            1152921504606846976
-          ],
-          [
-            "5HGjWAeFDfFCWPsjFQdVV2Msvz2XtMktvgocEZcCj68kUMaw",
-            1152921504606846976
-          ],
-          [
-            "5CiPPseXPECbkjWCa6MnjNokrgYjMqmKndv2rSnekmSK2DjL",
-            1152921504606846976
-          ],
-          [
-            "5GNJqTPyNqANBkUVMN1LPPrxXnFouWXoe2wNSmmEoLctxiZY",
-            1152921504606846976
-          ],
-          [
-            "5HpG9w8EBLe5XCrbczpwq5TSXvedjrBGCwqxK1iQ7qUsSWFc",
-            1152921504606846976
-          ],
-          [
-            "5Ck5SLSHYac6WFt5UZRSsdJjwmpSZq85fd5TRNAdZQVzEAPT",
-            1152921504606846976
-          ],
-          [
-            "5HKPmK9GYtE1PSLsS1qiYU9xQ9Si1NcEhdeCq9sw5bqu4ns8",
-            1152921504606846976
-          ],
-          [
-            "5FCfAonRZgTFrTd9HREEyeJjDpT397KMzizE6T3DvebLFE7n",
-            1152921504606846976
-          ],
-          [
-            "5CRmqmsiNFExV6VbdmPJViVxrWmkaXXvBrSX8oqBT8R9vmWk",
+            "5HY87iKg8b567Fx8w4VMrNmiWhELbcuMoJpGDHHaFenHpVTb",
             1152921504606846976
           ]
         ]
       },
       "transactionPayment": null,
       "sudo": {
-        "key": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"
+        "key": "5HY87iKg8b567Fx8w4VMrNmiWhELbcuMoJpGDHHaFenHpVTb"
       }
     }
   }
