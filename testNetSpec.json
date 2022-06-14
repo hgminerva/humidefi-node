@@ -1,6 +1,6 @@
 {
-  "name": "Humidefi Testnet",
-  "id": "local_testnet",
+  "name": "humidefi-testnet",
+  "id": "humidefi-testnet",
   "chainType": "Local",
   "bootNodes": [],
   "telemetryEndpoints": null,
