@@ -1,10 +1,9 @@
-./target/release/node-template --base-path /tmp/node01 \
+./target/release/node-template \
+--base-path /tmp/node01 \
 --chain ./testNetSpecRaw.json \
---port 30333 --ws-port 9944 \
+--port 30333 \
+--ws-port 9944 \
 --rpc-port 9933 \
---rpc-cors all \
---ws-external \
---rpc-external \
 --telemetry-url "wss://telemetry.polkadot.io/submit/ 0" \
 --validator \
 --rpc-methods Unsafe \

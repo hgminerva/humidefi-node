@@ -1,6 +1,6 @@
 {
   "name": "HumidefiTestnet",
-  "id": "HumidefiTestnet",
+  "id": "local_testnet",
   "chainType": "Local",
   "bootNodes": [],
   "telemetryEndpoints": null,
@@ -16,13 +16,18 @@
       },
       "aura": {
         "authorities": [
-          "5HY87iKg8b567Fx8w4VMrNmiWhELbcuMoJpGDHHaFenHpVTb"
+          "5HY87iKg8b567Fx8w4VMrNmiWhELbcuMoJpGDHHaFenHpVTb",
+          "5E4XhRFP7KEXxdztaURPoqKVPM2KpywoDcsgHm2RjMi395BP"
         ]
       },
       "grandpa": {
         "authorities": [
           [
             "5G44sYJagWPZB415jdiagquPHLjP17eGBsb9SWDxVmfVdHEs",
+            1
+          ],
+          [
+            "5HZ9jkjiHdx2nGriyL8CYRtJVMeznJ7gS1FsLCh2Bt3XFPT6",
             1
           ]
         ]
