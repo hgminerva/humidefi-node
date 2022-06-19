@@ -8,5 +8,5 @@
 --validator \
 --rpc-methods Unsafe \
 --name MyNode02
---bootnodes /ip4/127.0.0.1/tcp/30333/p2p/12D3KooWH5QNFGujDwvQJCMmYzXg2MvDx9hYk89MHrfgVJGVf5n5 \
+--bootnodes /ip4/127.0.0.1/tcp/30333/p2p/12D3KooWAoj9MMjcpD2jFpxM2MQq6oMQZCrLaM22Hv3LgyoJegwJ \
 --password-interactive
