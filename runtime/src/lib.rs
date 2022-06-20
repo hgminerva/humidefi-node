@@ -6,6 +6,7 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+// Default pallet and frame for node-template
 use pallet_grandpa::{
 	fg_primitives, AuthorityId as GrandpaId, AuthorityList as GrandpaAuthorityList,
 };
@@ -45,6 +46,8 @@ pub use sp_runtime::{Perbill, Permill};
 
 /// Import the template pallet.
 pub use pallet_template;
+
+mod impls;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -266,6 +269,31 @@ impl pallet_template::Config for Runtime {
 	type Event = Event;
 }
 
+// Humidefi block authorship fees
+// By: HGMinerva - June 20, 2022
+// Reference
+// 1. Github: https://github.com/substrate-developer-hub/substrate-node-template/issues/51
+// 2. Stackexchange: https://substrate.stackexchange.com/questions/3298/how-could-i-configure-that-reward-amount-or-value-for-my-aura-validators/3346#3346
+// -------------------------------
+pub struct AuraAccountAdapter;
+impl frame_support::traits::FindAuthor<AccountId> for AuraAccountAdapter {
+	fn find_author<'a, I>(digests: I) -> Option<AccountId>
+		where I: 'a + IntoIterator<Item=(frame_support::ConsensusEngineId, &'a [u8])>
+	{
+		pallet_aura::AuraAuthorId::<Runtime>::find_author(digests).and_then(|k| {
+			AccountId::try_from(k.as_ref()).ok()
+		})
+	}
+}
+impl pallet_authorship::Config for Runtime {
+	type FindAuthor = AuraAccountAdapter;
+	type UncleGenerations = ();
+	type FilterUncle = ();
+	type EventHandler = ();
+}
+// =========================
+// End here -> Fees for block author
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub enum Runtime where
@@ -283,6 +311,7 @@ construct_runtime!(
 		Sudo: pallet_sudo,
 		// Include the custom logic from the pallet-template in the runtime.
 		TemplateModule: pallet_template,
+		Authorship:pallet_authorship,
 	}
 );
 
