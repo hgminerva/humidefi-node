@@ -1,8 +1,12 @@
-./target/release/node-template \
+RUST_LOG=runtime=debug  ./target/release/node-template \
+--tmp \
 --dev \
+--alice \
 --port 30333 \
 --ws-port 9944 \
 --rpc-port 9933 \
 --rpc-cors all \
 --ws-external \
---rpc-external
+--rpc-external \
+--rpc-methods=unsafe \
+--validator

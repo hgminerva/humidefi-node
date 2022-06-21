@@ -14,7 +14,7 @@ impl OnUnbalanced<NegativeImbalance> for Author {
 	}
 }
 
-/* pub struct DealWithFees;
+pub struct DealWithFees;
 impl OnUnbalanced<NegativeImbalance> for DealWithFees {
 	fn on_unbalanceds<B>(mut fees_then_tips: impl Iterator<Item = NegativeImbalance>) {
 		if let Some(fees) = fees_then_tips.next() {
@@ -23,8 +23,8 @@ impl OnUnbalanced<NegativeImbalance> for DealWithFees {
 				// for tips, if any, 80% to treasury, 20% to block author (though this can be anything)
 				tips.ration_merge_into(80, 20, &mut split);
 			}
-			Treasury::on_unbalanced(split.0);
+			//Treasury::on_unbalanced(split.0);
 			Author::on_unbalanced(split.1);
 		}
 	}
-} */
+} 

@@ -1,18 +1,11 @@
 {
-  "name": "HumidefiTestnet",
+  "name": "Local Testnet",
   "id": "local_testnet",
   "chainType": "Local",
   "bootNodes": [],
-  "telemetryEndpoints": [
-    [
-      "/dns/telemetry.polkadot.io/tcp/443/x-parity-wss/%2Fsubmit%2F",
-      0
-    ]
-  ],
-  "protocolId": "humidefi",
-  "properties": {
-    "tokenSymbol":"UMI"
-  },
+  "telemetryEndpoints": null,
+  "protocolId": null,
+  "properties": null,
   "codeSubstitutes": {},
   "genesis": {
     "runtime": {
@@ -21,18 +14,18 @@
       },
       "aura": {
         "authorities": [
-          "5HY87iKg8b567Fx8w4VMrNmiWhELbcuMoJpGDHHaFenHpVTb",
-          "5E4XhRFP7KEXxdztaURPoqKVPM2KpywoDcsgHm2RjMi395BP"
+          "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+          "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
         ]
       },
       "grandpa": {
         "authorities": [
           [
-            "5G44sYJagWPZB415jdiagquPHLjP17eGBsb9SWDxVmfVdHEs",
+            "5FA9nQDVg267DEd8m1ZypXLBnvN7SFxYwV7ndqSYGiN9TTpu",
             1
           ],
           [
-            "5HZ9jkjiHdx2nGriyL8CYRtJVMeznJ7gS1FsLCh2Bt3XFPT6",
+            "5GoNkf6WdbxCFnPdAnYYQyCjAKPJgLNxXwPjwTh6DGg6gN3E",
             1
           ]
         ]
@@ -40,14 +33,58 @@
       "balances": {
         "balances": [
           [
-            "5HY87iKg8b567Fx8w4VMrNmiWhELbcuMoJpGDHHaFenHpVTb",
+            "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+            1152921504606846976
+          ],
+          [
+            "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty",
+            1152921504606846976
+          ],
+          [
+            "5FLSigC9HGRKVhB9FiEo4Y3koPsNmBmLJbpXg2mp1hXcS59Y",
+            1152921504606846976
+          ],
+          [
+            "5DAAnrj7VHTznn2AWBemMuyBwZWs6FNFjdyVXUeYum3PTXFy",
+            1152921504606846976
+          ],
+          [
+            "5HGjWAeFDfFCWPsjFQdVV2Msvz2XtMktvgocEZcCj68kUMaw",
+            1152921504606846976
+          ],
+          [
+            "5CiPPseXPECbkjWCa6MnjNokrgYjMqmKndv2rSnekmSK2DjL",
+            1152921504606846976
+          ],
+          [
+            "5GNJqTPyNqANBkUVMN1LPPrxXnFouWXoe2wNSmmEoLctxiZY",
+            1152921504606846976
+          ],
+          [
+            "5HpG9w8EBLe5XCrbczpwq5TSXvedjrBGCwqxK1iQ7qUsSWFc",
+            1152921504606846976
+          ],
+          [
+            "5Ck5SLSHYac6WFt5UZRSsdJjwmpSZq85fd5TRNAdZQVzEAPT",
+            1152921504606846976
+          ],
+          [
+            "5HKPmK9GYtE1PSLsS1qiYU9xQ9Si1NcEhdeCq9sw5bqu4ns8",
+            1152921504606846976
+          ],
+          [
+            "5FCfAonRZgTFrTd9HREEyeJjDpT397KMzizE6T3DvebLFE7n",
+            1152921504606846976
+          ],
+          [
+            "5CRmqmsiNFExV6VbdmPJViVxrWmkaXXvBrSX8oqBT8R9vmWk",
             1152921504606846976
           ]
         ]
       },
       "transactionPayment": null,
       "sudo": {
-        "key": "5HY87iKg8b567Fx8w4VMrNmiWhELbcuMoJpGDHHaFenHpVTb"
+        "key": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"
       }
     }
   }

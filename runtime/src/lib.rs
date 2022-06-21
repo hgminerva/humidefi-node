@@ -252,7 +252,7 @@ impl pallet_balances::Config for Runtime {
 }
 
 impl pallet_transaction_payment::Config for Runtime {
-	type OnChargeTransaction = CurrencyAdapter<Balances, ()>;
+	type OnChargeTransaction = CurrencyAdapter<Balances, crate::impls::DealWithFees>;
 	type OperationalFeeMultiplier = ConstU8<5>;
 	type WeightToFee = IdentityFee<Balance>;
 	type LengthToFee = IdentityFee<Balance>;
@@ -269,7 +269,7 @@ impl pallet_template::Config for Runtime {
 	type Event = Event;
 }
 
-// Humidefi block authorship fees
+// Humidefi block authorship fees, impls.rs included
 // By: HGMinerva - June 20, 2022
 // Reference
 // 1. Github: https://github.com/substrate-developer-hub/substrate-node-template/issues/51
@@ -289,7 +289,7 @@ impl pallet_authorship::Config for Runtime {
 	type FindAuthor = AuraAccountAdapter;
 	type UncleGenerations = ();
 	type FilterUncle = ();
-	type EventHandler = ();
+	type EventHandler =  ();
 }
 // =========================
 // End here -> Fees for block author
