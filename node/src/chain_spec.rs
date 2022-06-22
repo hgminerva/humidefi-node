@@ -48,6 +48,8 @@ pub fn development_config() -> Result<ChainSpec, String> {
 	let mut props : Properties = Properties::new();
     let value = json!("UMI");                          
     props.insert("tokenSymbol".to_string(), value);    
+	let value1 = json!(14);  
+	props.insert("tokenDecimals".to_string(), value1);    
 	// Some(props)
 	// =========================
 

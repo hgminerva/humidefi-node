@@ -3740,6 +3740,7 @@ dependencies = [
  "pallet-treasury",
  "parity-scale-codec",
  "scale-info",
+ "smallvec",
  "sp-api",
  "sp-block-builder",
  "sp-consensus-aura",

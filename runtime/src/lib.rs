@@ -24,6 +24,8 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 
+use smallvec::smallvec;
+
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
 	construct_runtime, parameter_types,
@@ -251,10 +253,73 @@ impl pallet_balances::Config for Runtime {
 	type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
 }
 
+// Humidefi block converting weights to fees, this fees will be used to pay of the author of the block
+// By: HGMinerva - June 22, 2022
+// Reference:
+// 1. https://github.com/JoshOrndorff/recipes/blob/master/runtimes/weight-fee-runtime/src/lib.rs
+//------------------------------
+pub struct LinearWeightToFee<C>(sp_std::marker::PhantomData<C>);
+impl<C> frame_support::weights::WeightToFeePolynomial for LinearWeightToFee<C>
+where
+	C: frame_support::pallet_prelude::Get<Balance>,
+{
+	type Balance = Balance;
+
+	fn polynomial() -> frame_support::weights::WeightToFeeCoefficients<Self::Balance> {
+		let coefficient = frame_support::weights::WeightToFeeCoefficient {
+			coeff_integer: C::get(),
+			coeff_frac: Perbill::zero(),
+			negative: false,
+			degree: 1,
+		};
+
+		// Return a smallvec of coefficients. Order does not need to match degrees
+		// because each coefficient has an explicit degree annotation.
+		smallvec!(coefficient)
+	}
+}
+
+pub struct QuadraticWeightToFee;
+impl frame_support::weights::WeightToFeePolynomial for QuadraticWeightToFee {
+	type Balance = Balance;
+	fn polynomial() -> frame_support::weights::WeightToFeeCoefficients<Self::Balance> {
+		let linear = frame_support::weights::WeightToFeeCoefficient {
+			coeff_integer: 2,
+			coeff_frac: Perbill::from_percent(40),
+			negative: true,
+			degree: 1,
+		};
+		let quadratic = frame_support::weights::WeightToFeeCoefficient {
+			coeff_integer: 3,
+			coeff_frac: Perbill::zero(),
+			negative: false,
+			degree: 2,
+		};
+
+		// Return a smallvec of coefficients. Order does not need to match degrees
+		// because each coefficient has an explicit degree annotation. In fact, any
+		// negative coefficients should be saved for last regardless of their degree
+		// because large negative coefficients will likely cause saturation (to zero)
+		// if they happen early on.
+		smallvec![quadratic, linear]
+	}
+}
+
+parameter_types! {
+	// Used with LinearWeightToFee conversion. Leaving this constant in tact when using other
+	// conversion techniques is harmless.
+	pub const FeeWeightRatio: u128 = 1_000;
+
+	// Establish the byte-fee. It is used in all configurations.
+	pub const TransactionByteFee: u128 = 1;
+}
+//=====================
+
 impl pallet_transaction_payment::Config for Runtime {
 	type OnChargeTransaction = CurrencyAdapter<Balances, crate::impls::DealWithFees>;
 	type OperationalFeeMultiplier = ConstU8<5>;
-	type WeightToFee = IdentityFee<Balance>;
+	//type WeightToFee = IdentityFee<Balance>;
+	type WeightToFee = LinearWeightToFee<FeeWeightRatio>;
 	type LengthToFee = IdentityFee<Balance>;
 	type FeeMultiplierUpdate = ();
 }
@@ -285,6 +350,7 @@ impl frame_support::traits::FindAuthor<AccountId> for AuraAccountAdapter {
 		})
 	}
 }
+
 impl pallet_authorship::Config for Runtime {
 	type FindAuthor = AuraAccountAdapter;
 	type UncleGenerations = ();
