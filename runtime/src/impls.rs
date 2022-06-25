@@ -25,7 +25,7 @@ impl OnUnbalanced<NegativeImbalance> for DealWithFees {
 	fn on_unbalanceds<B>(mut fees_then_tips: impl Iterator<Item = NegativeImbalance>) {
 		if let Some(fees) = fees_then_tips.next() {
 			let mut split = fees.ration(0, 100);
-			frame_support::debug(&split);
+			//frame_support::debug(&split);
 			if let Some(tips) = fees_then_tips.next() {
 				// for tips, if any, 80% to treasury, 20% to block author (though this can be anything)
 				frame_support::debug(&tips);
