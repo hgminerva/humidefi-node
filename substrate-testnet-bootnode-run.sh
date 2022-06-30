@@ -6,5 +6,8 @@
 --rpc-port 9933 \
 --telemetry-url "wss://telemetry.polkadot.io/submit/ 0" \
 --validator \
+--rpc-cors all \
+--ws-external \
+--rpc-external \
 --rpc-methods Unsafe \
 --name MyNode01

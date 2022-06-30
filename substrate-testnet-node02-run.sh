@@ -6,7 +6,9 @@
 --rpc-port 9934 \
 --telemetry-url "wss://telemetry.polkadot.io/submit/ 0" \
 --validator \
+--rpc-cors all \
+--ws-external \
+--rpc-external \
 --rpc-methods Unsafe \
---name MyNode02
+--name MyNode02 \
 --bootnodes /ip4/127.0.0.1/tcp/30333/p2p/12D3KooWAk2PkrAqmEaqGtGc8ieUARYWmTyJkimpndd1F1f3ZJWZ \
---password-interactive
