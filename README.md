@@ -6,7 +6,7 @@ Features:
 - Rewarded Proof-of-Authority (PoA)
 - Smart Contract
 
-More information in my blog: [Blog](https://hgminerva.wordpress.com/)
+More information in my [Blog](https://hgminerva.wordpress.com/).
 
 ## Getting Started
 
