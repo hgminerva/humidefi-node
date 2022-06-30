@@ -6,7 +6,9 @@
 --rpc-port 9933 \
 --telemetry-url "wss://telemetry.polkadot.io/submit/ 0" \
 --validator \
+--rpc-cors all \
+--ws-external \
+--rpc-external \
 --rpc-methods Unsafe \
---name MyNode02
---bootnodes /ip4/bootnode001.humidefi.com/tcp/30333/p2p/12D3KooWAk2PkrAqmEaqGtGc8ieUARYWmTyJkimpndd1F1f3ZJWZ \
---password-interactive
+--name MyNode02 \
+--bootnodes /dns/bootnode001.humidefi.com/tcp/30333/p2p/12D3KooWD1jkK5DBdizzjePXHBBJZWuQUfnRaftWPVBJ2KLJAyTN
