@@ -1,12 +1,12 @@
 ./target/release/node-template \
 --base-path /tmp/node02 \
 --chain ./testNetSpecRaw.json \
---port 30334 \
---ws-port 9945 \
---rpc-port 9934 \
+--port 30333 \
+--ws-port 9944 \
+--rpc-port 9933 \
 --telemetry-url "wss://telemetry.polkadot.io/submit/ 0" \
 --validator \
 --rpc-methods Unsafe \
 --name MyNode02
---bootnodes /ip4/127.0.0.1/tcp/30333/p2p/12D3KooWAk2PkrAqmEaqGtGc8ieUARYWmTyJkimpndd1F1f3ZJWZ \
+--bootnodes /ip4/bootnode001.humidefi.com/tcp/30333/p2p/12D3KooWAk2PkrAqmEaqGtGc8ieUARYWmTyJkimpndd1F1f3ZJWZ \
 --password-interactive
