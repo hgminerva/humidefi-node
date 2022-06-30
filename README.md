@@ -2,9 +2,11 @@
 
 Freshly hacked FRAME-based [Substrate](https://www.substrate.io/) node. :rocket:
 
-Features
+Features:
 - Rewarded Proof-of-Authority (PoA)
 - Smart Contract
+
+More information in my blog: [![HGMINERVA]](https://hgminerva.wordpress.com/)
 
 ## Getting Started
 
