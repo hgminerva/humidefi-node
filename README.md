@@ -2,6 +2,10 @@
 
 Freshly hacked FRAME-based [Substrate](https://www.substrate.io/) node. :rocket:
 
+Features
+- Rewarded Proof-of-Authority (PoA)
+- Smart Contract
+
 ## Getting Started
 
 Follow the steps below to get started with the Humidefi Node.
