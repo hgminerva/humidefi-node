@@ -38,6 +38,11 @@ pub mod pallet {
 	// https://docs.substrate.io/v3/runtime/storage#declaring-storage-items
 	pub type Something<T> = StorageValue<_, u32>;
 
+	// Humidefi Dex Storage Chain Settings
+	// References:
+	// https://docs.substrate.io/reference/how-to-guides/pallet-design/create-a-storage-structure/
+	
+
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
 	#[pallet::event]

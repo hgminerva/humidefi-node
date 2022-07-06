@@ -49,8 +49,8 @@ use pallet_transaction_payment::CurrencyAdapter;
 pub use sp_runtime::BuildStorage;
 pub use sp_runtime::{Perbill, Permill};
 
-/// Import the humidefi pallet.
-pub use pallet_humidefi;
+/// Import the dex pallet.
+pub use pallet_dex;
 
 mod impls;
 
@@ -384,8 +384,8 @@ impl pallet_sudo::Config for Runtime {
 	type Call = Call;
 }
 
-/// Configure the pallet-humidefi in pallets/humidefi.
-impl pallet_humidefi::Config for Runtime {
+/// Configure the pallet-dex in pallets/dex.
+impl pallet_dex::Config for Runtime {
 	type Event = Event;
 }
 
@@ -431,7 +431,7 @@ construct_runtime!(
 		TransactionPayment: pallet_transaction_payment,
 		Sudo: pallet_sudo,
 		// Include the custom logic from the pallet-template in the runtime.
-		HumidefiModule: pallet_humidefi,
+		DexModule: pallet_dex,
 		Authorship:pallet_authorship,
 		Contracts: pallet_contracts,
 	}
@@ -478,7 +478,7 @@ mod benches {
 		[frame_system, SystemBench::<Runtime>]
 		[pallet_balances, Balances]
 		[pallet_timestamp, Timestamp]
-		[pallet_humidefi, HumidefiModule]
+		[pallet_dex, DexModule]
 	);
 }
 
