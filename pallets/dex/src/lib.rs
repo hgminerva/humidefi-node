@@ -1,3 +1,9 @@
+// Humidefi Dex Pallet- By: hgminerva-20220709
+// References
+// 1. https://github.com/substrate-developer-hub/substrate-how-to-guides/tree/d3602a66d66be5b013f2e3330081ea4e0d6dd978/example-code/template-node/pallets/reward-coin
+// 2. https://mlink.in/qa/?qa=1117564/ (String->Vec<u8>)
+// 3. https://www.youtube.com/watch?v=69uCTnvzL60&t=1392s
+// 4. https://chowdera.com/2021/08/20210809112247168h.html
 #![cfg_attr(not(feature = "std"), no_std)]
 
 /// Edit this file to define custom logic or remove it if it is not needed.
@@ -18,6 +24,7 @@ mod benchmarking;
 pub mod pallet {
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
+	use frame_support::inherent::Vec;
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
@@ -27,6 +34,7 @@ pub mod pallet {
 	}
 
 	#[pallet::pallet]
+	#[pallet::without_storage_info]
 	#[pallet::generate_store(pub(super) trait Store)]
 	pub struct Pallet<T>(_);
 
@@ -34,14 +42,15 @@ pub mod pallet {
 	// https://docs.substrate.io/v3/runtime/storage
 	#[pallet::storage]
 	#[pallet::getter(fn something)]
-	// Learn more about declaring storage items:
-	// https://docs.substrate.io/v3/runtime/storage#declaring-storage-items
 	pub type Something<T> = StorageValue<_, u32>;
 
-	// Humidefi Dex Storage Chain Settings
-	// References:
-	// https://docs.substrate.io/reference/how-to-guides/pallet-design/create-a-storage-structure/
-	
+	#[pallet::storage]
+	#[pallet::getter(fn ticker_data)]
+	pub type TickerDataStore<T> = StorageValue<_, Vec<u8>>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn dex_account)]
+	pub type DexDataStore<T: Config> = StorageValue<_, T::AccountId>;
 
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
@@ -51,6 +60,10 @@ pub mod pallet {
 		/// Event documentation should end with an array that provides descriptive names for event
 		/// parameters. [something, who]
 		SomethingStored(u32, T::AccountId),
+		/// When there is a new ticker data stored
+		TickerPriceData(Vec<u8>, T::AccountId),
+		/// When there is a new DEX account stored
+		DexAccountDataStored(T::AccountId, T::AccountId),
 	}
 
 	// Errors inform users that something went wrong.
@@ -85,6 +98,20 @@ pub mod pallet {
 			Ok(())
 		}
 
+		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		pub fn store_ticker_price(origin: OriginFor<T>, ticker_data: Vec<u8>) -> DispatchResult {
+
+			let who = ensure_signed(origin.clone())?;
+
+			//let _are_you_root = ensure_root(origin)?;
+
+			<TickerDataStore<T>>::put(ticker_data.clone());
+
+			Self::deposit_event(Event::TickerPriceData(ticker_data, who));
+
+			Ok(())
+		}
+		
 		/// An example dispatchable that may throw a custom error.
 		#[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
 		pub fn cause_error(origin: OriginFor<T>) -> DispatchResult {
@@ -99,6 +126,7 @@ pub mod pallet {
 					let new = old.checked_add(1).ok_or(Error::<T>::StorageOverflow)?;
 					// Update the value in storage with the incremented result.
 					<Something<T>>::put(new);
+
 					Ok(())
 				},
 			}
