@@ -61,9 +61,9 @@ pub mod pallet {
 		/// parameters. [something, who]
 		SomethingStored(u32, T::AccountId),
 		/// When there is a new ticker data stored
-		TickerPriceData(Vec<u8>, T::AccountId),
+		TickerPriceDataStored(Vec<u8>),
 		/// When there is a new DEX account stored
-		DexAccountDataStored(T::AccountId, T::AccountId),
+		DexAccountDataStored(T::AccountId),
 	}
 
 	// Errors inform users that something went wrong.
@@ -100,14 +100,22 @@ pub mod pallet {
 
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn store_ticker_price(origin: OriginFor<T>, ticker_data: Vec<u8>) -> DispatchResult {
-
-			let who = ensure_signed(origin.clone())?;
-
-			//let _are_you_root = ensure_root(origin)?;
+			ensure_root(origin)?;
 
 			<TickerDataStore<T>>::put(ticker_data.clone());
 
-			Self::deposit_event(Event::TickerPriceData(ticker_data, who));
+			Self::deposit_event(Event::TickerPriceDataStored(ticker_data));
+
+			Ok(())
+		}
+
+		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		pub fn store_dex_account(origin: OriginFor<T>, dex_account: T::AccountId) -> DispatchResult {
+			ensure_root(origin)?;
+
+			<DexDataStore<T>>::put(dex_account.clone());
+
+			Self::deposit_event(Event::DexAccountDataStored(dex_account));
 
 			Ok(())
 		}
