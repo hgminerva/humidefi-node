@@ -11,27 +11,33 @@
 /// <https://docs.substrate.io/v3/runtime/frame>
 pub use pallet::*;
 
-#[cfg(test)]
-mod mock;
+//#[cfg(test)]
+//mod mock;
 
-#[cfg(test)]
-mod tests;
+//#[cfg(test)]
+//mod tests;
 
-#[cfg(feature = "runtime-benchmarks")]
-mod benchmarking;
+//#[cfg(feature = "runtime-benchmarks")]
+//mod benchmarking;
 
 #[frame_support::pallet]
 pub mod pallet {
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
 	use frame_support::inherent::Vec;
+	use frame_support::traits::Currency;
+	use frame_support::traits::ExistenceRequirement;
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+		/// Currency
+		type Currency: Currency<Self::AccountId>;
 	}
+
+	pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 	#[pallet::pallet]
 	#[pallet::without_storage_info]
@@ -64,6 +70,8 @@ pub mod pallet {
 		TickerPriceDataStored(Vec<u8>),
 		/// When there is a new DEX account stored
 		DexAccountDataStored(T::AccountId),
+		/// When there is a new DEX account stored
+		SwapExecuted(T::AccountId),
 	}
 
 	// Errors inform users that something went wrong.
@@ -73,6 +81,8 @@ pub mod pallet {
 		NoneValue,
 		/// Errors should have helpful documentation associated with them.
 		StorageOverflow,
+		/// Errors should have helpful documentation associated with them.
+		InsufficientFunds,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -119,7 +129,23 @@ pub mod pallet {
 
 			Ok(())
 		}
-		
+
+		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		pub fn do_swap(origin: OriginFor<T>, source: T::AccountId, quantity:  BalanceOf<T>, source_ticker: Vec<u8>, destination_ticker: Vec<u8>,) -> DispatchResult {
+			let _who = ensure_signed(origin)?;
+			//let ticker_prices = TickerDataStore::<T>::get(); 
+
+			match DexDataStore::<T>::get() {
+				Some(destination) => {
+					T::Currency::transfer(&source, &destination, quantity, ExistenceRequirement::KeepAlive)?;
+				},
+				None => return Err(Error::<T>::NoneValue.into()),
+			};
+
+			Self::deposit_event(Event::SwapExecuted(source));
+			Ok(())
+		}
+
 		/// An example dispatchable that may throw a custom error.
 		#[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
 		pub fn cause_error(origin: OriginFor<T>) -> DispatchResult {
