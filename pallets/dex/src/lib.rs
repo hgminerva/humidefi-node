@@ -37,7 +37,6 @@ pub mod pallet {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 		type Currency: Currency<Self::AccountId>;
-
 	}
 
 	//pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -62,6 +61,10 @@ pub mod pallet {
 	#[pallet::getter(fn dex_account)]
 	pub type DexDataStore<T: Config> = StorageValue<_, T::AccountId>;
 
+	#[pallet::storage]
+	#[pallet::getter(fn phpu_account)]
+	pub type PhpuDataStore<T: Config> = StorageValue<_, T::AccountId>;	
+
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
 	#[pallet::event]
@@ -74,7 +77,9 @@ pub mod pallet {
 		TickerPriceDataStored(Vec<u8>),
 		/// When there is a new DEX account stored
 		DexAccountDataStored(T::AccountId),
-		/// When there is a new DEX account stored
+		/// When there is a new PHPU account stored
+		PhpuAccountDataStored(T::AccountId),
+		/// When there is a swap
 		SwapExecuted(T::AccountId),
 	}
 
@@ -137,32 +142,73 @@ pub mod pallet {
 		}
 
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		pub fn store_phpu_account(origin: OriginFor<T>, phpu_account: T::AccountId) -> DispatchResult {
+			ensure_root(origin)?;
+
+			<PhpuDataStore<T>>::put(phpu_account.clone());
+
+			Self::deposit_event(Event::PhpuAccountDataStored(phpu_account));
+
+			Ok(())
+		}	
+
+		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn do_swap(origin: OriginFor<T>, source: T::AccountId, quantity:  BalanceOf<T>, source_ticker: Vec<u8>, destination_ticker: Vec<u8>,) -> DispatchResult {
+
+			// from source: quantity <source_ticker> => to dex: quantity <source_ticker>
+			// from dex: converted_quantity <destination_ticker> => to source: converted_quantity <destination_ticker>
+			
 			let who = ensure_signed(origin)?;
 			//let ticker_prices = TickerDataStore::<T>::get(); 
+
 			match DexDataStore::<T>::get() {
-				Some(destination) => {
-					let gas_limit = 10_000_000_000;
-					let debug = false;
-					let mut selector: Vec<u8> = [0x63, 0x3A, 0xA5, 0x51].into();
-					let mut message_arg = 15663040u32.encode();
-					let mut data = Vec::new();
-					data.append(&mut selector);
-					data.append(&mut message_arg);
-					pallet_contracts::Pallet::<T>::bare_call(
-						who,
-						destination.clone(),
-						quantity,
-						gas_limit,
-						None,
-						data,
-						debug,
-					).result?;
+				Some(dex_account) => {
+					match PhpuDataStore::<T>::get() {
+						Some(phpu_account) => {
+							let gas_limit = 10_000_000_000;
+							let debug = false;
+				
+							let mut message_selector: Vec<u8> = [0x84, 0xA1, 0x5D, 0xA1].into();
+							let value: BalanceOf<T> = Default::default();
+									
+							let mut to_account_id = source.encode();
+							let mut amount_to_transfer = quantity.encode();
+							
+							let mut data = Vec::new();
+							data.append(&mut message_selector);
+							data.append(&mut to_account_id);
+							data.append(&mut amount_to_transfer);
+
+							pallet_contracts::Pallet::<T>::bare_call(
+								dex_account, 			
+								phpu_account,			
+								value,
+								gas_limit,
+								None,
+								data,
+								debug,
+							).result?;
+						},
+						None => return Err(Error::<T>::NoneValue.into()),
+					};
 				},
 				None => return Err(Error::<T>::NoneValue.into()),
 			};
 
+
+
+
+
+
+
+			// match DexDataStore::<T>::get() {
+			// 	Some(destination) => {
+			// 	},
+			// 	None => return Err(Error::<T>::NoneValue.into()),
+			// };
+
 			Self::deposit_event(Event::SwapExecuted(source));
+			
 			Ok(())
 		}
 
