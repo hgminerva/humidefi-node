@@ -20,4 +20,5 @@ testNetKeys.txt
 testNetSpec.json
 substrate-testnet-bootnode-run.sh
 substrate-testnet-node02-run.sh
+*json.bak
 

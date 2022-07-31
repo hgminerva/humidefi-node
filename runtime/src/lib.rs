@@ -387,7 +387,7 @@ impl pallet_sudo::Config for Runtime {
 /// Configure the pallet-dex in pallets/dex.
 impl pallet_dex::Config for Runtime {
 	type Event = Event;
-	type Currency = pallet_balances::Module<Runtime>;
+	type Currency = pallet_balances::Pallet<Runtime>;
 }
 
 // Humidefi block authorship fees, impls.rs included

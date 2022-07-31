@@ -4,13 +4,15 @@
 // 2. https://mlink.in/qa/?qa=1117564/ (String->Vec<u8>)
 // 3. https://www.youtube.com/watch?v=69uCTnvzL60&t=1392s
 // 4. https://chowdera.com/2021/08/20210809112247168h.html
+// 5. https://github.com/gautamdhameja/substrate-runtime-contract-sample/blob/master/pallets/template/src/lib.rs
+// 6. https://stackoverflow.com/questions/70559578/substrate-pallet-loosely-coupling-example-between-2-custom-pallets
+// 7. https://github.com/justinFrevert/Runtime-Contract-Interactions/blob/master/pallets/template/src/lib.rs
 #![cfg_attr(not(feature = "std"), no_std)]
 
 /// Edit this file to define custom logic or remove it if it is not needed.
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
 /// <https://docs.substrate.io/v3/runtime/frame>
 pub use pallet::*;
-
 //#[cfg(test)]
 //mod mock;
 
@@ -26,18 +28,20 @@ pub mod pallet {
 	use frame_system::pallet_prelude::*;
 	use frame_support::inherent::Vec;
 	use frame_support::traits::Currency;
-	use frame_support::traits::ExistenceRequirement;
+
+	use pallet_contracts::chain_extension::UncheckedFrom;
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
-	pub trait Config: frame_system::Config {
+	pub trait Config: frame_system::Config + pallet_contracts::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
-		/// Currency
 		type Currency: Currency<Self::AccountId>;
+
 	}
 
-	pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+	//pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+	type BalanceOf<T> = <<T as pallet_contracts::Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 	#[pallet::pallet]
 	#[pallet::without_storage_info]
@@ -89,7 +93,9 @@ pub mod pallet {
 	// These functions materialize as "extrinsics", which are often compared to transactions.
 	// Dispatchable functions must be annotated with a weight and must return a DispatchResult.
 	#[pallet::call]
-	impl<T: Config> Pallet<T> {
+	impl<T: Config> Pallet<T> 
+	where T::AccountId: UncheckedFrom<T::Hash>, T::AccountId: AsRef<[u8]>,
+	{
 		/// An example dispatchable that takes a singles value as a parameter, writes the value to
 		/// storage and emits an event. This function must be dispatched by a signed extrinsic.
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
@@ -132,12 +138,26 @@ pub mod pallet {
 
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn do_swap(origin: OriginFor<T>, source: T::AccountId, quantity:  BalanceOf<T>, source_ticker: Vec<u8>, destination_ticker: Vec<u8>,) -> DispatchResult {
-			let _who = ensure_signed(origin)?;
+			let who = ensure_signed(origin)?;
 			//let ticker_prices = TickerDataStore::<T>::get(); 
-
 			match DexDataStore::<T>::get() {
 				Some(destination) => {
-					T::Currency::transfer(&source, &destination, quantity, ExistenceRequirement::KeepAlive)?;
+					let gas_limit = 10_000_000_000;
+					let debug = false;
+					let mut selector: Vec<u8> = [0x63, 0x3A, 0xA5, 0x51].into();
+					let mut message_arg = 15663040u32.encode();
+					let mut data = Vec::new();
+					data.append(&mut selector);
+					data.append(&mut message_arg);
+					pallet_contracts::Pallet::<T>::bare_call(
+						who,
+						destination.clone(),
+						quantity,
+						gas_limit,
+						None,
+						data,
+						debug,
+					).result?;
 				},
 				None => return Err(Error::<T>::NoneValue.into()),
 			};
