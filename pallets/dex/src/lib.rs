@@ -180,18 +180,26 @@ pub mod pallet {
 					Some(ticker_price_data) => {
 						let value_string = scale_info::prelude::string::String::from_utf8(ticker_price_data).expect("Invalid");
 						let v: serde_json::Value = serde_json::from_str(&value_string).map_err(|_| <Error<T>>::TickerPriceDataInvalid)?;
-						let umi_price: u32 = serde_json::from_value(v[0]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
-						let phpu_price:u32 = serde_json::from_value(v[0]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
+						let umi_price: u64 = serde_json::from_value(v[0]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
+						let phpu_price: u64 = serde_json::from_value(v[1]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
+						let umi_price_balance: Option<BalanceOf<T>> = umi_price.try_into().ok();
+						let phpu_price_balance: Option<BalanceOf<T>> = phpu_price.try_into().ok();
+
+						let umi_multiplier;
+						let phpu_multiplier;
+						match umi_price_balance { Some(multiplier) => { umi_multiplier = multiplier; },  None => { umi_multiplier = Default::default(); } };
+						match phpu_price_balance { Some(multiplier) => { phpu_multiplier = multiplier; },  None => { phpu_multiplier = Default::default(); } };
+
 						match DexDataStore::<T>::get() {
 							Some(dex_account) => {
 								match PhpuDataStore::<T>::get() {
 									Some(phpu_account) => {
-										let umi = quantity * umi_price.clone().into();
 										// Transfer from Source send UMI to DEX
+										let umi = quantity * umi_multiplier.clone();
 										<T as Config>::Currency::transfer(&source, &dex_account, umi, ExistenceRequirement::KeepAlive)?;
 										// Transfer from DEX send equivalent PHPU to source
 										let mut to = source.encode();
-										let mut phpu =(quantity * phpu_price.clone().into()).encode();
+										let mut phpu =(quantity * phpu_multiplier.clone()).encode();
 										let mut data = Vec::new();
 										data.append(&mut message_selector);
 										data.append(&mut to);
