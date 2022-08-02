@@ -28,7 +28,7 @@ pub mod pallet {
 	use frame_system::pallet_prelude::*;
 	use frame_support::inherent::Vec;
 	use frame_support::traits::Currency;
-
+	use frame_support::traits::ExistenceRequirement;
 	use pallet_contracts::chain_extension::UncheckedFrom;
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
@@ -40,7 +40,8 @@ pub mod pallet {
 	}
 
 	//pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
-	type BalanceOf<T> = <<T as pallet_contracts::Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+	type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+	type PHPUBalanceOf<T> = <<T as pallet_contracts::Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 	#[pallet::pallet]
 	#[pallet::without_storage_info]
@@ -86,11 +87,13 @@ pub mod pallet {
 	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
-		/// Error names should be descriptive.
 		NoneValue,
-		/// Errors should have helpful documentation associated with them.
+		NoTickerPriceData,
+		TickerPriceDataInvalid,
+		TickerPriceInvalid,
+		NoDexAccount,
+		NoPhpuAccount,
 		StorageOverflow,
-		/// Errors should have helpful documentation associated with them.
 		InsufficientFunds,
 	}
 
@@ -154,58 +157,68 @@ pub mod pallet {
 
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn do_swap(origin: OriginFor<T>, source: T::AccountId, quantity:  BalanceOf<T>, source_ticker: Vec<u8>, destination_ticker: Vec<u8>,) -> DispatchResult {
-
 			// from source: quantity <source_ticker> => to dex: quantity <source_ticker>
 			// from dex: converted_quantity <destination_ticker> => to source: converted_quantity <destination_ticker>
 			
-			let who = ensure_signed(origin)?;
+			let _who = ensure_signed(origin)?;
 			//let ticker_prices = TickerDataStore::<T>::get(); 
 
-			match DexDataStore::<T>::get() {
-				Some(dex_account) => {
-					match PhpuDataStore::<T>::get() {
-						Some(phpu_account) => {
-							let gas_limit = 10_000_000_000;
-							let debug = false;
-				
-							let mut message_selector: Vec<u8> = [0x84, 0xA1, 0x5D, 0xA1].into();
-							let value: BalanceOf<T> = Default::default();
-									
-							let mut to_account_id = source.encode();
-							let mut amount_to_transfer = quantity.encode();
-							
-							let mut data = Vec::new();
-							data.append(&mut message_selector);
-							data.append(&mut to_account_id);
-							data.append(&mut amount_to_transfer);
+			let ticker1 = scale_info::prelude::string::String::from_utf8(source_ticker).expect("Invalid");
+			let ticker2 = scale_info::prelude::string::String::from_utf8(destination_ticker).expect("Invalid");
 
-							pallet_contracts::Pallet::<T>::bare_call(
-								dex_account, 			
-								phpu_account,			
-								value,
-								gas_limit,
-								None,
-								data,
-								debug,
-							).result?;
-						},
-						None => return Err(Error::<T>::NoneValue.into()),
-					};
-				},
-				None => return Err(Error::<T>::NoneValue.into()),
-			};
+			// PHPU Stable Coin Contract Selector
+			let gas_limit = 10_000_000_000;
+			let debug = false;
+			let mut message_selector: Vec<u8> = [0x84, 0xA1, 0x5D, 0xA1].into();
+			let value: PHPUBalanceOf<T> = Default::default();
 
+			// UMI -> PHPU
+			// From Source send UMI to DEX
+			// From DEX send equivalent PHPU to source
+			if ticker1.eq("UMI") && ticker2.eq("PHPU") {
+				match TickerDataStore::<T>::get() {
+					Some(ticker_price_data) => {
+						let value_string = scale_info::prelude::string::String::from_utf8(ticker_price_data).expect("Invalid");
+						let v: serde_json::Value = serde_json::from_str(&value_string).map_err(|_| <Error<T>>::TickerPriceDataInvalid)?;
+						let umi_price: u32 = serde_json::from_value(v[0]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
+						let phpu_price:u32 = serde_json::from_value(v[0]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
+						match DexDataStore::<T>::get() {
+							Some(dex_account) => {
+								match PhpuDataStore::<T>::get() {
+									Some(phpu_account) => {
+										let umi = quantity * umi_price.clone().into();
+										// Transfer from Source send UMI to DEX
+										<T as Config>::Currency::transfer(&source, &dex_account, umi, ExistenceRequirement::KeepAlive)?;
+										// Transfer from DEX send equivalent PHPU to source
+										let mut to = source.encode();
+										let mut phpu =(quantity * phpu_price.clone().into()).encode();
+										let mut data = Vec::new();
+										data.append(&mut message_selector);
+										data.append(&mut to);
+										data.append(&mut phpu);
+										pallet_contracts::Pallet::<T>::bare_call(
+											dex_account, 			
+											phpu_account,			
+											value,
+											gas_limit,
+											None,
+											data,
+											debug,
+										).result?;
+									}, None => return Err(Error::<T>::NoPhpuAccount.into()),
+								}
+							} , None => return Err(Error::<T>::NoDexAccount.into()),
+						} 
+					}, None => return Err(Error::<T>::NoTickerPriceData.into()),
+				}	
+			}
 
+			// PHPU -> UMI
+			// From Source send PHPU to DEX
+			// From DEX send equivalent UMI to source
+			if ticker1.eq("PHPU") && ticker2.eq("UMI") {
 
-
-
-
-
-			// match DexDataStore::<T>::get() {
-			// 	Some(destination) => {
-			// 	},
-			// 	None => return Err(Error::<T>::NoneValue.into()),
-			// };
+			}
 
 			Self::deposit_event(Event::SwapExecuted(source));
 			
