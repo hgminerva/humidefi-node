@@ -172,6 +172,10 @@ pub mod pallet {
 			let mut message_selector: Vec<u8> = [0x84, 0xA1, 0x5D, 0xA1].into();
 			let value: PHPUBalanceOf<T> = Default::default();
 
+			let decimal: Option<BalanceOf<T>> = 100_000_000_000_000u64.try_into().ok();
+			let decimal_multiplier;
+			match decimal { Some(multiplier) => { decimal_multiplier = multiplier; },  None => { decimal_multiplier = Default::default(); } };
+
 			// UMI -> PHPU
 			// From Source send UMI to DEX
 			// From DEX send equivalent PHPU to source
@@ -184,22 +188,23 @@ pub mod pallet {
 						let phpu_price: u64 = serde_json::from_value(v[1]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
 						let umi_price_balance: Option<BalanceOf<T>> = umi_price.try_into().ok();
 						let phpu_price_balance: Option<BalanceOf<T>> = phpu_price.try_into().ok();
-
+						
 						let umi_multiplier;
 						let phpu_multiplier;
 						match umi_price_balance { Some(multiplier) => { umi_multiplier = multiplier; },  None => { umi_multiplier = Default::default(); } };
 						match phpu_price_balance { Some(multiplier) => { phpu_multiplier = multiplier; },  None => { phpu_multiplier = Default::default(); } };
-
+						
 						match DexDataStore::<T>::get() {
 							Some(dex_account) => {
 								match PhpuDataStore::<T>::get() {
 									Some(phpu_account) => {
 										// Transfer from Source send UMI to DEX
-										let umi = quantity * umi_multiplier.clone();
+										let umi = quantity * decimal_multiplier.clone();
 										<T as Config>::Currency::transfer(&source, &dex_account, umi, ExistenceRequirement::KeepAlive)?;
 										// Transfer from DEX send equivalent PHPU to source
+										let factor = (phpu_multiplier.clone()*decimal_multiplier.clone()) / umi_multiplier.clone();
 										let mut to = source.encode();
-										let mut phpu =(quantity * phpu_multiplier.clone()).encode();
+										let mut phpu =( quantity * factor.clone()).encode();
 										let mut data = Vec::new();
 										data.append(&mut message_selector);
 										data.append(&mut to);
@@ -225,7 +230,50 @@ pub mod pallet {
 			// From Source send PHPU to DEX
 			// From DEX send equivalent UMI to source
 			if ticker1.eq("PHPU") && ticker2.eq("UMI") {
+				match TickerDataStore::<T>::get() {
+					Some(ticker_price_data) => {
+						let value_string = scale_info::prelude::string::String::from_utf8(ticker_price_data).expect("Invalid");
+						let v: serde_json::Value = serde_json::from_str(&value_string).map_err(|_| <Error<T>>::TickerPriceDataInvalid)?;
+						let umi_price: u64 = serde_json::from_value(v[0]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
+						let phpu_price: u64 = serde_json::from_value(v[1]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
+						let umi_price_balance: Option<BalanceOf<T>> = umi_price.try_into().ok();
+						let phpu_price_balance: Option<BalanceOf<T>> = phpu_price.try_into().ok();
 
+						let umi_multiplier;
+						let phpu_multiplier;
+						match umi_price_balance { Some(multiplier) => { umi_multiplier = multiplier; },  None => { umi_multiplier = Default::default(); } };
+						match phpu_price_balance { Some(multiplier) => { phpu_multiplier = multiplier; },  None => { phpu_multiplier = Default::default(); } };
+
+						match DexDataStore::<T>::get() {
+							Some(dex_account) => {
+								match PhpuDataStore::<T>::get() {
+									Some(phpu_account) => {
+										// Transfer from source send equivalent PHPU to DEX
+										let mut to = dex_account.encode();
+										let mut phpu = (quantity * decimal_multiplier.clone()).encode();
+										let mut data = Vec::new();
+										data.append(&mut message_selector);
+										data.append(&mut to);
+										data.append(&mut phpu);
+										pallet_contracts::Pallet::<T>::bare_call(
+											source.clone(), 			
+											phpu_account,			
+											value,
+											gas_limit,
+											None,
+											data,
+											debug,
+										).result?;
+										// Transfer from DEX send UMI to Source
+										let factor = (umi_multiplier.clone()*decimal_multiplier.clone()) / phpu_multiplier.clone();
+										let umi = quantity * factor.clone();
+										<T as Config>::Currency::transfer(&dex_account, &source, umi, ExistenceRequirement::KeepAlive)?;
+									}, None => return Err(Error::<T>::NoPhpuAccount.into()),
+								}
+							}, None => return Err(Error::<T>::NoDexAccount.into()),
+						}
+					}, None => return Err(Error::<T>::NoTickerPriceData.into()),
+				}
 			}
 
 			Self::deposit_event(Event::SwapExecuted(source));
