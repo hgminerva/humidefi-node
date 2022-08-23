@@ -58,13 +58,30 @@ pub mod pallet {
 	#[pallet::getter(fn ticker_data)]
 	pub type TickerDataStore<T> = StorageValue<_, Vec<u8>>;
 
+	/// Holder of the DEX income 
 	#[pallet::storage]
 	#[pallet::getter(fn dex_account)]
 	pub type DexDataStore<T: Config> = StorageValue<_, T::AccountId>;
 
+	/// Holder of the PHPU contract
 	#[pallet::storage]
 	#[pallet::getter(fn phpu_account)]
 	pub type PhpuDataStore<T: Config> = StorageValue<_, T::AccountId>;	
+
+	/// Holder of the PHPU Liquidity Pool Contract
+	#[pallet::storage]
+	#[pallet::getter(fn phpu_liquidity_account)]
+	pub type PhpuLiquidityDataStore<T: Config> = StorageValue<_, T::AccountId>;	
+
+	/// Holder of the UMI Liquidity Pool Contract
+	#[pallet::storage]
+	#[pallet::getter(fn umi_liquidity_account)]
+	pub type UmiLiquidityDataStore<T: Config> = StorageValue<_, T::AccountId>;	
+
+	/// Swap fees in percentage
+	#[pallet::storage]
+	#[pallet::getter(fn swap_fees)]
+	pub type SwapFeesDataStore<T: Config> = StorageValue<_, u32>;	
 
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
@@ -80,8 +97,18 @@ pub mod pallet {
 		DexAccountDataStored(T::AccountId),
 		/// When there is a new PHPU account stored
 		PhpuAccountDataStored(T::AccountId),
+		/// When there is a new UMI liquidity account stored
+		UmiLiquidityAccountDataStored(T::AccountId),
+		/// When there is a new PHPU liquidity account stored
+		PhpuLiquidityAccountDataStored(T::AccountId),
+		/// When there is a new income account stored
+		DexIncomeAccountDataStored(T::AccountId),
 		/// When there is a swap
 		SwapExecuted(T::AccountId),
+		/// When there is a stake
+		StakeExecuted(T::AccountId),
+		/// When there is a redeem
+		RedeemExecuted(T::AccountId),
 	}
 
 	// Errors inform users that something went wrong.
@@ -95,6 +122,8 @@ pub mod pallet {
 		NoPhpuAccount,
 		StorageOverflow,
 		InsufficientFunds,
+		NoUmiLiquidityAccount,
+		NoPhpuLiquidityAccount,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -104,24 +133,7 @@ pub mod pallet {
 	impl<T: Config> Pallet<T> 
 	where T::AccountId: UncheckedFrom<T::Hash>, T::AccountId: AsRef<[u8]>,
 	{
-		/// An example dispatchable that takes a singles value as a parameter, writes the value to
-		/// storage and emits an event. This function must be dispatched by a signed extrinsic.
-		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-		pub fn do_something(origin: OriginFor<T>, something: u32) -> DispatchResult {
-			// Check that the extrinsic was signed and get the signer.
-			// This function will return an error if the extrinsic is not signed.
-			// https://docs.substrate.io/v3/runtime/origins
-			let who = ensure_signed(origin)?;
-
-			// Update storage.
-			<Something<T>>::put(something);
-
-			// Emit an event.
-			Self::deposit_event(Event::SomethingStored(something, who));
-			// Return a successful DispatchResultWithPostInfo
-			Ok(())
-		}
-
+		/// Setup the ticker prices
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn store_ticker_price(origin: OriginFor<T>, ticker_data: Vec<u8>) -> DispatchResult {
 			ensure_root(origin)?;
@@ -133,6 +145,7 @@ pub mod pallet {
 			Ok(())
 		}
 
+		/// Setup the DEX account
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn store_dex_account(origin: OriginFor<T>, dex_account: T::AccountId) -> DispatchResult {
 			ensure_root(origin)?;
@@ -144,6 +157,7 @@ pub mod pallet {
 			Ok(())
 		}
 
+		/// Setup the PHPU Smart Contract Account
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn store_phpu_account(origin: OriginFor<T>, phpu_account: T::AccountId) -> DispatchResult {
 			ensure_root(origin)?;
@@ -155,6 +169,31 @@ pub mod pallet {
 			Ok(())
 		}	
 
+		/// Setup the UMI Liquidity Smart Contract Account
+		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		pub fn store_umi_liquidity_account(origin: OriginFor<T>, umi_liquidity_account: T::AccountId) -> DispatchResult {
+			ensure_root(origin)?;
+
+			<UmiLiquidityDataStore<T>>::put(umi_liquidity_account.clone());
+
+			Self::deposit_event(Event::UmiLiquidityAccountDataStored(umi_liquidity_account));
+
+			Ok(())
+		}	
+
+		/// Setup the DEX Income Account
+		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		pub fn store_phpu_liquidity_account(origin: OriginFor<T>, phpu_liquidity_account: T::AccountId) -> DispatchResult {
+			ensure_root(origin)?;
+
+			<PhpuLiquidityDataStore<T>>::put(phpu_liquidity_account.clone());
+
+			Self::deposit_event(Event::PhpuLiquidityAccountDataStored(phpu_liquidity_account));
+
+			Ok(())
+		}	
+
+		/// Swap token
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn do_swap(origin: OriginFor<T>, source: T::AccountId, quantity:  BalanceOf<T>, source_ticker: Vec<u8>, destination_ticker: Vec<u8>,) -> DispatchResult {
 			// from source: quantity <source_ticker> => to dex: quantity <source_ticker>
@@ -281,6 +320,94 @@ pub mod pallet {
 			Ok(())
 		}
 
+		/// Stake token to get liquidity token
+		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		pub fn do_liquidity_stake(origin: OriginFor<T>, source: T::AccountId, quantity:  BalanceOf<T>,source_ticker: Vec<u8>) -> DispatchResult {
+			let _who = ensure_signed(origin)?;
+
+			let ticker = scale_info::prelude::string::String::from_utf8(source_ticker).expect("Invalid");
+			
+			if ticker.eq("UMI")  {
+				match UmiLiquidityDataStore::<T>::get() {
+					Some(umi_liquidity_account) => {
+						// Transfer UMI to UMI Liquidity Account
+						<T as Config>::Currency::transfer(&source, &umi_liquidity_account, quantity, ExistenceRequirement::KeepAlive)?;
+						// Mint lUMI and transfer to the source
+						// Contract settings
+						let gas_limit:u64 = 10_000_000_000;
+						let debug = false;
+						let mut message_selector: Vec<u8> = [0x1D, 0x2F, 0x13, 0xC5].into();
+						let contract_value: PHPUBalanceOf<T> = Default::default();
+						// Message and parameters
+						let mut to = source.encode();
+						let mut value = quantity.encode();
+						let mut data = Vec::new();
+						data.append(&mut message_selector);
+						data.append(&mut to);
+						data.append(&mut value);
+						// Call
+						pallet_contracts::Pallet::<T>::bare_call(
+							source.clone(), 			
+							umi_liquidity_account,			
+							contract_value,
+							gas_limit,
+							None,
+							data,
+							debug,
+						).result?;
+					}, 
+					None => return Err(Error::<T>::NoUmiLiquidityAccount.into()),
+				}
+			} 
+
+			if ticker.eq("PHPU")  {
+				match UmiLiquidityDataStore::<T>::get() {
+					Some(phpu_liquidity_account) => {
+						// Transfer UMI to UMI Liquidity Account
+						<T as Config>::Currency::transfer(&source, &phpu_liquidity_account, quantity, ExistenceRequirement::KeepAlive)?;
+						// Mint lUMI and transfer to the source
+						// Contract settings
+						let gas_limit:u64 = 10_000_000_000;
+						let debug = false;
+						let mut message_selector: Vec<u8> = [0x1D, 0x2F, 0x13, 0xC5].into();
+						let contract_value: PHPUBalanceOf<T> = Default::default();
+						// Message and parameters
+						let mut to = source.encode();
+						let mut value = quantity.encode();
+						let mut data = Vec::new();
+						data.append(&mut message_selector);
+						data.append(&mut to);
+						data.append(&mut value);
+						// Call
+						pallet_contracts::Pallet::<T>::bare_call(
+							source.clone(), 			
+							phpu_liquidity_account,			
+							contract_value,
+							gas_limit,
+							None,
+							data,
+							debug,
+						).result?;
+					}, 
+					None => return Err(Error::<T>::NoUmiLiquidityAccount.into()),
+				}
+			} 
+
+			Self::deposit_event(Event::StakeExecuted(source));
+			Ok(())
+		}
+
+		/// Redeem the liquidity token
+		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		pub fn do_liquidity_redeem(origin: OriginFor<T>, source: T::AccountId, quantity:  BalanceOf<T>,source_ticker: Vec<u8>) -> DispatchResult {
+			let _who = ensure_signed(origin)?;
+
+			let ticker = scale_info::prelude::string::String::from_utf8(source_ticker).expect("Invalid");
+
+			Self::deposit_event(Event::RedeemExecuted(source));
+			Ok(())
+		}
+
 		/// An example dispatchable that may throw a custom error.
 		#[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
 		pub fn cause_error(origin: OriginFor<T>) -> DispatchResult {
@@ -300,5 +427,6 @@ pub mod pallet {
 				},
 			}
 		}
+
 	}
 }
