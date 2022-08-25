@@ -330,9 +330,9 @@ pub mod pallet {
 			if ticker.eq("UMI")  {
 				match UmiLiquidityDataStore::<T>::get() {
 					Some(umi_liquidity_account) => {
-						// Transfer UMI to UMI Liquidity Account
+						// STEP 1: Transfer UMI to UMI Liquidity Account
 						<T as Config>::Currency::transfer(&source, &umi_liquidity_account, quantity, ExistenceRequirement::KeepAlive)?;
-						// Mint lUMI and transfer to the source
+						// STEP 2: Mint lUMI and transfer to the source
 						// Contract settings
 						let gas_limit:u64 = 10_000_000_000;
 						let debug = false;
@@ -361,35 +361,54 @@ pub mod pallet {
 			} 
 
 			if ticker.eq("PHPU")  {
-				match UmiLiquidityDataStore::<T>::get() {
+				match PhpuLiquidityDataStore::<T>::get() {
 					Some(phpu_liquidity_account) => {
-						// Transfer UMI to UMI Liquidity Account
-						<T as Config>::Currency::transfer(&source, &phpu_liquidity_account, quantity, ExistenceRequirement::KeepAlive)?;
-						// Mint lUMI and transfer to the source
-						// Contract settings
-						let gas_limit:u64 = 10_000_000_000;
-						let debug = false;
-						let mut message_selector: Vec<u8> = [0x1D, 0x2F, 0x13, 0xC5].into();
-						let contract_value: PHPUBalanceOf<T> = Default::default();
-						// Message and parameters
-						let mut to = source.encode();
-						let mut value = quantity.encode();
-						let mut data = Vec::new();
-						data.append(&mut message_selector);
-						data.append(&mut to);
-						data.append(&mut value);
-						// Call
-						pallet_contracts::Pallet::<T>::bare_call(
-							source.clone(), 			
-							phpu_liquidity_account,			
-							contract_value,
-							gas_limit,
-							None,
-							data,
-							debug,
-						).result?;
+						match PhpuDataStore::<T>::get() {
+							Some(phpu_account) => {
+								// STEP 1: Transfer PHPU to PHPU Liquidity Account
+								let gas_limit:u64 = 10_000_000_000;
+								let debug = false;
+								let mut message_selector: Vec<u8> = [0x84, 0xA1, 0x5D, 0xA1].into();
+								let contract_value: PHPUBalanceOf<T> = Default::default();
+								let mut phpu_to = source.encode();
+								let mut phpu_value = quantity.encode();
+								let mut phpu_data = Vec::new();
+								phpu_data.append(&mut message_selector);
+								phpu_data.append(&mut phpu_to);
+								phpu_data.append(&mut phpu_value);
+								pallet_contracts::Pallet::<T>::bare_call(
+									source.clone(), 			
+									phpu_account.clone(),			
+									contract_value.clone(),
+									gas_limit.clone(),
+									None,
+									phpu_data,
+									debug,
+								).result?;
+								// STEP 2: Mint lPHPU and transfer to the source
+								// Contract settings
+								message_selector = [0x1D, 0x2F, 0x13, 0xC5].into();
+								// Message and parameters
+								let mut lphpu_to = source.encode();
+								let mut lphpu_value = quantity.encode();
+								let mut lphpu_data = Vec::new();
+								lphpu_data.append(&mut message_selector);
+								lphpu_data.append(&mut lphpu_to);
+								lphpu_data.append(&mut lphpu_value);
+								// Call
+								pallet_contracts::Pallet::<T>::bare_call(
+									source.clone(), 			
+									phpu_liquidity_account,			
+									contract_value,
+									gas_limit,
+									None,
+									lphpu_data,
+									debug,
+								).result?;
+							}, None => return Err(Error::<T>::NoPhpuAccount.into()),
+						}
 					}, 
-					None => return Err(Error::<T>::NoUmiLiquidityAccount.into()),
+					None => return Err(Error::<T>::NoPhpuLiquidityAccount.into()),
 				}
 			} 
 
