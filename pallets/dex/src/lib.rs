@@ -112,6 +112,8 @@ pub mod pallet {
 		RedeemExecuted(T::AccountId),
 		/// When PHPU is sent
 		SentPhpu(T::AccountId),
+		/// When there is a new swap fees
+		SwapFeesDataStored(u8),
 	}
 
 	// Errors inform users that something went wrong.
@@ -196,6 +198,18 @@ pub mod pallet {
 
 			Ok(())
 		}	
+
+		/// Setup swap fees
+		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		pub fn store_swap_fees(origin: OriginFor<T>, swap_fees: u8) -> DispatchResult {
+			ensure_root(origin)?;
+
+			<SwapFeesDataStore<T>>::put(swap_fees.clone());
+
+			Self::deposit_event(Event::SwapFeesDataStored(swap_fees));
+
+			Ok(())
+		}
 
 		/// Swap token
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
