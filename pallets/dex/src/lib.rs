@@ -30,6 +30,7 @@ pub mod pallet {
 	use frame_support::traits::Currency;
 	use frame_support::traits::ExistenceRequirement;
 	use pallet_contracts::chain_extension::UncheckedFrom;
+	use sp_runtime::Percent;
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
@@ -81,7 +82,7 @@ pub mod pallet {
 	/// Swap fees in percentage
 	#[pallet::storage]
 	#[pallet::getter(fn swap_fees)]
-	pub type SwapFeesDataStore<T: Config> = StorageValue<_, u32>;	
+	pub type SwapFeesDataStore<T: Config> = StorageValue<_, u8>;	
 
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
@@ -109,6 +110,8 @@ pub mod pallet {
 		StakeExecuted(T::AccountId),
 		/// When there is a redeem
 		RedeemExecuted(T::AccountId),
+		/// When PHPU is sent
+		SentPhpu(T::AccountId),
 	}
 
 	// Errors inform users that something went wrong.
@@ -124,6 +127,7 @@ pub mod pallet {
 		InsufficientFunds,
 		NoUmiLiquidityAccount,
 		NoPhpuLiquidityAccount,
+		NoSwapFees,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -196,78 +200,110 @@ pub mod pallet {
 		/// Swap token
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn do_swap(origin: OriginFor<T>, source: T::AccountId, quantity:  BalanceOf<T>, source_ticker: Vec<u8>, destination_ticker: Vec<u8>,) -> DispatchResult {
-			// from source: quantity <source_ticker> => to dex: quantity <source_ticker>
-			// from dex: converted_quantity <destination_ticker> => to source: converted_quantity <destination_ticker>
-			
 			let _who = ensure_signed(origin)?;
-			//let ticker_prices = TickerDataStore::<T>::get(); 
 
+			// Ticker
 			let ticker1 = scale_info::prelude::string::String::from_utf8(source_ticker).expect("Invalid");
 			let ticker2 = scale_info::prelude::string::String::from_utf8(destination_ticker).expect("Invalid");
 
-			// PHPU Stable Coin Contract Selector
-			let gas_limit = 10_000_000_000;
-			let debug = false;
-			let mut message_selector: Vec<u8> = [0x84, 0xA1, 0x5D, 0xA1].into();
-			let value: PHPUBalanceOf<T> = Default::default();
-
+			// Decimal (14)
 			let decimal: Option<BalanceOf<T>> = 100_000_000_000_000u64.try_into().ok();
 			let decimal_multiplier;
 			match decimal { Some(multiplier) => { decimal_multiplier = multiplier; },  None => { decimal_multiplier = Default::default(); } };
 
+			// PHPU Contract Settings
+			let phpu_contract_gas_limit = 10_000_000_000;
+			let phpu_contract_debug = false;
+			let phpu_contract_value: PHPUBalanceOf<T> = Default::default();
+			let mut phpu_ontract_message_selector: Vec<u8> = [0x84, 0xA1, 0x5D, 0xA1].into();
+
 			// UMI -> PHPU
-			// From Source send UMI to DEX
-			// From DEX send equivalent PHPU to source
 			if ticker1.eq("UMI") && ticker2.eq("PHPU") {
 				match TickerDataStore::<T>::get() {
 					Some(ticker_price_data) => {
+
+						// Conversion
 						let value_string = scale_info::prelude::string::String::from_utf8(ticker_price_data).expect("Invalid");
 						let v: serde_json::Value = serde_json::from_str(&value_string).map_err(|_| <Error<T>>::TickerPriceDataInvalid)?;
 						let umi_price: u64 = serde_json::from_value(v[0]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
 						let phpu_price: u64 = serde_json::from_value(v[1]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
 						let umi_price_balance: Option<BalanceOf<T>> = umi_price.try_into().ok();
 						let phpu_price_balance: Option<BalanceOf<T>> = phpu_price.try_into().ok();
-						
 						let umi_multiplier;
 						let phpu_multiplier;
 						match umi_price_balance { Some(multiplier) => { umi_multiplier = multiplier; },  None => { umi_multiplier = Default::default(); } };
 						match phpu_price_balance { Some(multiplier) => { phpu_multiplier = multiplier; },  None => { phpu_multiplier = Default::default(); } };
 						
-						match DexDataStore::<T>::get() {
+						match DexDataStore::<T>::get() { // DEX Acoount
 							Some(dex_account) => {
-								match PhpuDataStore::<T>::get() {
+
+								match PhpuDataStore::<T>::get() { // PHPU Contract Account
 									Some(phpu_account) => {
-										// Transfer from Source send UMI to DEX
-										let umi = quantity * decimal_multiplier.clone();
-										<T as Config>::Currency::transfer(&source, &dex_account, umi, ExistenceRequirement::KeepAlive)?;
-										// Transfer from DEX send equivalent PHPU to source
-										let factor = (phpu_multiplier.clone()*decimal_multiplier.clone()) / umi_multiplier.clone();
-										let mut to = source.encode();
-										let mut phpu =( quantity * factor.clone()).encode();
-										let mut data = Vec::new();
-										data.append(&mut message_selector);
-										data.append(&mut to);
-										data.append(&mut phpu);
-										pallet_contracts::Pallet::<T>::bare_call(
-											dex_account, 			
-											phpu_account,			
-											value,
-											gas_limit,
-											None,
-											data,
-											debug,
-										).result?;
+
+										match SwapFeesDataStore::<T>::get() {
+											Some(swap_fees) => {
+
+												// STEP 1: Transfer UMI from source to Liquidity UMI Account
+												let umi = quantity * decimal_multiplier.clone();
+												<T as Config>::Currency::transfer(&source, &dex_account, umi, ExistenceRequirement::KeepAlive)?;
+
+												// STEP 2: Transfer 99% PHPU from Liquidity PHPU Account to source
+												let swap_fee_percentage = Percent::from_percent(swap_fees);
+												let factor = (phpu_multiplier.clone()*decimal_multiplier.clone()) / umi_multiplier.clone();
+												let income_quantity = swap_fee_percentage * quantity;
+												let source_quantity = quantity - income_quantity;
+
+												let mut source_data = Vec::new();
+												let mut source_phpu =(source_quantity * factor.clone()).encode();
+												let mut source_to = source.encode();
+												source_data.append(&mut phpu_ontract_message_selector);
+												source_data.append(&mut source_to);
+												source_data.append(&mut source_phpu);
+
+												pallet_contracts::Pallet::<T>::bare_call(
+													dex_account.clone(), 			
+													phpu_account.clone(),			
+													phpu_contract_value,
+													phpu_contract_gas_limit,
+													None,
+													source_data,
+													phpu_contract_debug,
+												).result?;
+
+												let mut income_data = Vec::new();
+												let mut income_phpu =(income_quantity * factor.clone()).encode();
+												let mut income_to = dex_account.encode();
+												income_data.append(&mut phpu_ontract_message_selector);
+												income_data.append(&mut income_to);
+												income_data.append(&mut income_phpu);
+
+												pallet_contracts::Pallet::<T>::bare_call(
+													dex_account, 			
+													phpu_account,			
+													phpu_contract_value,
+													phpu_contract_gas_limit,
+													None,
+													income_data,
+													phpu_contract_debug,
+												).result?;
+
+												// STEP 3: Transfer 1% PHPU from Liquidity PHPU Account to DEX account (Income Account)
+
+											}, None => return Err(Error::<T>::NoSwapFees.into()),
+										}
+
 									}, None => return Err(Error::<T>::NoPhpuAccount.into()),
 								}
+
 							} , None => return Err(Error::<T>::NoDexAccount.into()),
 						} 
+
 					}, None => return Err(Error::<T>::NoTickerPriceData.into()),
 				}	
+
 			}
 
 			// PHPU -> UMI
-			// From Source send PHPU to DEX
-			// From DEX send equivalent UMI to source
 			if ticker1.eq("PHPU") && ticker2.eq("UMI") {
 				match TickerDataStore::<T>::get() {
 					Some(ticker_price_data) => {
@@ -291,17 +327,17 @@ pub mod pallet {
 										let mut to = dex_account.encode();
 										let mut phpu = (quantity * decimal_multiplier.clone()).encode();
 										let mut data = Vec::new();
-										data.append(&mut message_selector);
+										data.append(&mut phpu_ontract_message_selector);
 										data.append(&mut to);
 										data.append(&mut phpu);
 										pallet_contracts::Pallet::<T>::bare_call(
 											source.clone(), 			
 											phpu_account,			
-											value,
-											gas_limit,
+											phpu_contract_value,
+											phpu_contract_gas_limit,
 											None,
 											data,
-											debug,
+											phpu_contract_debug,
 										).result?;
 										// Transfer from DEX send UMI to Source
 										let factor = (umi_multiplier.clone()*decimal_multiplier.clone()) / phpu_multiplier.clone();
@@ -319,6 +355,8 @@ pub mod pallet {
 			
 			Ok(())
 		}
+
+
 
 		/// Stake token to get liquidity token
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
