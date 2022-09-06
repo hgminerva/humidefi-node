@@ -43,6 +43,8 @@ pub mod pallet {
 	//pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 	type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 	type PHPUBalanceOf<T> = <<T as pallet_contracts::Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+	type LUMIBalanceOf<T> = <<T as pallet_contracts::Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+	type LPHPUBalanceOf<T> = <<T as pallet_contracts::Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 	#[pallet::pallet]
 	#[pallet::without_storage_info]
@@ -130,6 +132,7 @@ pub mod pallet {
 		NoUmiLiquidityAccount,
 		NoPhpuLiquidityAccount,
 		NoSwapFees,
+		NoLiquiditySupply,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -229,7 +232,7 @@ pub mod pallet {
 			let phpu_contract_gas_limit = 10_000_000_000;
 			let phpu_contract_debug = false;
 			let phpu_contract_value: PHPUBalanceOf<T> = Default::default();
-			let mut phpu_ontract_message_selector: Vec<u8> = [0x84, 0xA1, 0x5D, 0xA1].into();
+			let mut phpu_contract_message_transfer_selector: Vec<u8> = [0x84, 0xA1, 0x5D, 0xA1].into();
 
 			// UMI -> PHPU
 			if ticker1.eq("UMI") && ticker2.eq("PHPU") {
@@ -278,7 +281,7 @@ pub mod pallet {
 																let mut source_data = Vec::new();
 																let mut source_phpu =(source_quantity * factor.clone()).encode();
 																let mut source_to = source.encode();
-																source_data.append(&mut phpu_ontract_message_selector);
+																source_data.append(&mut phpu_contract_message_transfer_selector);
 																source_data.append(&mut source_to);
 																source_data.append(&mut source_phpu);
 
@@ -296,7 +299,7 @@ pub mod pallet {
 																let mut income_data = Vec::new();
 																let mut income_phpu =(income_quantity * factor.clone()).encode();
 																let mut income_to = dex_account.encode();
-																income_data.append(&mut phpu_ontract_message_selector);
+																income_data.append(&mut phpu_contract_message_transfer_selector);
 																income_data.append(&mut income_to);
 																income_data.append(&mut income_phpu);
 
@@ -367,7 +370,7 @@ pub mod pallet {
 																let mut to = phpu_liquidity_account.encode();
 																let mut phpu = (quantity * decimal_multiplier.clone()).encode();
 																let mut data = Vec::new();
-																data.append(&mut phpu_ontract_message_selector);
+																data.append(&mut phpu_contract_message_transfer_selector);
 																data.append(&mut to);
 																data.append(&mut phpu);
 																pallet_contracts::Pallet::<T>::bare_call(
@@ -419,98 +422,102 @@ pub mod pallet {
 			Ok(())
 		}
 
-
-
 		/// Stake token to get liquidity token
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn do_liquidity_stake(origin: OriginFor<T>, source: T::AccountId, quantity:  BalanceOf<T>,source_ticker: Vec<u8>) -> DispatchResult {
 			let _who = ensure_signed(origin)?;
 
 			let ticker = scale_info::prelude::string::String::from_utf8(source_ticker).expect("Invalid");
+
+			// Decimal (14)
+			let decimal: Option<BalanceOf<T>> = 100_000_000_000_000u64.try_into().ok();
+			let decimal_multiplier;
+			match decimal { Some(multiplier) => { decimal_multiplier = multiplier; },  None => { decimal_multiplier = Default::default(); } };
 			
+			// Contract settings
+			let default_contract_gas_limit:u64 = 10_000_000_000;
+			let default_contract_debug = false;
+			let default_contract_value: PHPUBalanceOf<T> = Default::default();
+			let mut liquidity_contract_mint_message_selector: Vec<u8> = [0x1D, 0x2F, 0x13, 0xC5].into();
+			let mut phpu_contract_transfer_message_selector: Vec<u8> = [0x84, 0xA1, 0x5D, 0xA1].into();
+
 			if ticker.eq("UMI")  {
 				match UmiLiquidityDataStore::<T>::get() {
 					Some(umi_liquidity_account) => {
+
 						// STEP 1: Transfer UMI to UMI Liquidity Account
-						<T as Config>::Currency::transfer(&source, &umi_liquidity_account, quantity, ExistenceRequirement::KeepAlive)?;
-						// STEP 2: Mint lUMI and transfer to the source
-						// Contract settings
-						let gas_limit:u64 = 10_000_000_000;
-						let debug = false;
-						let mut message_selector: Vec<u8> = [0x1D, 0x2F, 0x13, 0xC5].into();
-						let contract_value: PHPUBalanceOf<T> = Default::default();
-						// Message and parameters
-						let mut to = source.encode();
-						let mut value = quantity.encode();
-						let mut data = Vec::new();
-						data.append(&mut message_selector);
-						data.append(&mut to);
-						data.append(&mut value);
-						// Call
+						let umi = quantity * decimal_multiplier;
+						<T as Config>::Currency::transfer(&source, &umi_liquidity_account, umi, ExistenceRequirement::KeepAlive)?;
+
+						// STEP 2: Mint and transfer lUMI to source
+						let mut lumi_to = source.encode();
+						let mut lumi_value = (quantity * decimal_multiplier).encode();
+						let mut lumi_data = Vec::new();
+						lumi_data.append(&mut liquidity_contract_mint_message_selector);
+						lumi_data.append(&mut lumi_to);
+						lumi_data.append(&mut lumi_value);
 						pallet_contracts::Pallet::<T>::bare_call(
 							source.clone(), 			
 							umi_liquidity_account,			
-							contract_value,
-							gas_limit,
+							default_contract_value,
+							default_contract_gas_limit,
 							None,
-							data,
-							debug,
+							lumi_data,
+							default_contract_debug,
 						).result?;
-					}, 
-					None => return Err(Error::<T>::NoUmiLiquidityAccount.into()),
+
+					},  None => return Err(Error::<T>::NoUmiLiquidityAccount.into()),
 				}
+
 			} 
 
 			if ticker.eq("PHPU")  {
 				match PhpuLiquidityDataStore::<T>::get() {
 					Some(phpu_liquidity_account) => {
+
 						match PhpuDataStore::<T>::get() {
 							Some(phpu_account) => {
-								// STEP 1: Transfer PHPU to PHPU Liquidity Account
-								let gas_limit:u64 = 10_000_000_000;
-								let debug = false;
-								let mut message_selector: Vec<u8> = [0x84, 0xA1, 0x5D, 0xA1].into();
-								let contract_value: PHPUBalanceOf<T> = Default::default();
-								let mut phpu_to = source.encode();
-								let mut phpu_value = quantity.encode();
+
+								// STEP 1: Transfer PHPU to PHPU Liquidity Account								
+								let mut phpu_to = phpu_liquidity_account.encode();
+								let mut phpu_value = (quantity * decimal_multiplier).encode();
 								let mut phpu_data = Vec::new();
-								phpu_data.append(&mut message_selector);
+								phpu_data.append(&mut phpu_contract_transfer_message_selector);
 								phpu_data.append(&mut phpu_to);
 								phpu_data.append(&mut phpu_value);
 								pallet_contracts::Pallet::<T>::bare_call(
 									source.clone(), 			
 									phpu_account.clone(),			
-									contract_value.clone(),
-									gas_limit.clone(),
+									default_contract_value.clone(),
+									default_contract_gas_limit.clone(),
 									None,
 									phpu_data,
-									debug,
+									default_contract_debug,
 								).result?;
-								// STEP 2: Mint lPHPU and transfer to the source
-								// Contract settings
-								message_selector = [0x1D, 0x2F, 0x13, 0xC5].into();
-								// Message and parameters
+
+								// STEP 2: Mint lPHPU and transfer to source
 								let mut lphpu_to = source.encode();
-								let mut lphpu_value = quantity.encode();
+								let mut lphpu_value = (quantity * decimal_multiplier).encode();
 								let mut lphpu_data = Vec::new();
-								lphpu_data.append(&mut message_selector);
+								lphpu_data.append(&mut liquidity_contract_mint_message_selector);
 								lphpu_data.append(&mut lphpu_to);
 								lphpu_data.append(&mut lphpu_value);
-								// Call
 								pallet_contracts::Pallet::<T>::bare_call(
 									source.clone(), 			
 									phpu_liquidity_account,			
-									contract_value,
-									gas_limit,
+									default_contract_value,
+									default_contract_gas_limit,
 									None,
 									lphpu_data,
-									debug,
+									default_contract_debug,
 								).result?;
+
 							}, None => return Err(Error::<T>::NoPhpuAccount.into()),
 						}
-					}, 
-					None => return Err(Error::<T>::NoPhpuLiquidityAccount.into()),
+
+					}, None => return Err(Error::<T>::NoPhpuLiquidityAccount.into()),
 				}
+
 			} 
 
 			Self::deposit_event(Event::StakeExecuted(source));
@@ -523,6 +530,160 @@ pub mod pallet {
 			let _who = ensure_signed(origin)?;
 
 			let ticker = scale_info::prelude::string::String::from_utf8(source_ticker).expect("Invalid");
+
+			// Decimal (14)
+			let decimal: Option<BalanceOf<T>> = 100_000_000_000_000u64.try_into().ok();
+			let decimal_multiplier;
+			match decimal { Some(multiplier) => { decimal_multiplier = multiplier; },  None => { decimal_multiplier = Default::default(); } };
+
+			// Liquidity Token Contract Settings
+			let default_contract_gas_limit:u64 = 10_000_000_000;
+			let default_contract_debug = false;
+			let lumi_contract_value: LUMIBalanceOf<T> = Default::default();
+			let lphpu_contract_value: LPHPUBalanceOf<T> = Default::default();
+			let phpu_contract_value: PHPUBalanceOf<T> = Default::default();
+
+			let mut default_message_transfer_selector: Vec<u8> = [0x1D, 0x2F, 0x13, 0xC5].into();
+			// let mut default_message_total_supply_selector: Vec<u8> = [0x16, 0x2D, 0xF8, 0xC2].into();
+			let mut default_message_burn_selector: Vec<u8> = [0x7A, 0x9D, 0xA5, 0x10].into();
+			let mut phpu_contract_message_transfer_selector: Vec<u8> = [0x84, 0xA1, 0x5D, 0xA1].into();
+
+			if ticker.eq("lUMI") {
+				match UmiLiquidityDataStore::<T>::get() {
+					Some(umi_liquidity_account) => {
+
+						match DexDataStore::<T>::get() {
+							Some(dex_account) => { 
+
+								// STEP 1: Transfer the lUMI from source to the Liquidity Account
+								let mut lumi_to = umi_liquidity_account.encode();
+								let mut lumi_value = (quantity * decimal_multiplier.clone()).encode();
+								let mut lumi_data = Vec::new();
+								lumi_data.append(&mut default_message_transfer_selector);
+								lumi_data.append(&mut lumi_to);
+								lumi_data.append(&mut lumi_value);
+								pallet_contracts::Pallet::<T>::bare_call(
+									source.clone(), 			
+									umi_liquidity_account.clone(),			
+									lumi_contract_value,
+									default_contract_gas_limit,
+									None,
+									lumi_data,
+									default_contract_debug,
+								).result?;
+
+								// STEP 2: Return the equivalent UMI to the source
+								let return_umi = quantity * decimal_multiplier.clone();
+								<T as Config>::Currency::transfer(&umi_liquidity_account, &source, return_umi, ExistenceRequirement::KeepAlive)?;
+
+								// STEP 3: Compute for the percentage - To be implemented
+
+
+								// STEP 4: Transfer the UMI interest from DEX account to the source - To be implemented
+
+
+								// STEP 5: Burn the lUMI in the liquidity Account
+								let mut lumi_burn_to = umi_liquidity_account.encode();
+								let mut lumi_burn_value = (quantity * decimal_multiplier.clone()).encode();
+								let mut lumi_burn_data = Vec::new();
+								lumi_burn_data.append(&mut default_message_burn_selector);
+								lumi_burn_data.append(&mut lumi_burn_to);
+								lumi_burn_data.append(&mut lumi_burn_value);
+								pallet_contracts::Pallet::<T>::bare_call(
+									dex_account.clone(), 			
+									umi_liquidity_account.clone(),			
+									lumi_contract_value,
+									default_contract_gas_limit,
+									None,
+									lumi_burn_data,
+									default_contract_debug,
+								).result?;
+
+							}, None => return Err(Error::<T>::NoDexAccount.into()),
+						}
+
+					},None => return Err(Error::<T>::NoUmiLiquidityAccount.into()),
+				}
+
+			}
+
+			if ticker.eq("lPHPU") {
+				match PhpuLiquidityDataStore::<T>::get() {
+					Some(phpu_liquidity_account) => {
+
+						match DexDataStore::<T>::get() {
+							Some(dex_account) => { 
+
+								match PhpuDataStore::<T>::get() {
+									Some(phpu_account) => { 
+								
+									// STEP 1: Transfer the lPHPU from source to the Liquidity Account
+									let mut lphpu_to = phpu_liquidity_account.encode();
+									let mut lphpu_value = (quantity * decimal_multiplier.clone()).encode();
+									let mut lphpu_data = Vec::new();
+									lphpu_data.append(&mut default_message_transfer_selector);
+									lphpu_data.append(&mut lphpu_to);
+									lphpu_data.append(&mut lphpu_value);
+									pallet_contracts::Pallet::<T>::bare_call(
+										source.clone(), 			
+										phpu_liquidity_account.clone(),			
+										lphpu_contract_value,
+										default_contract_gas_limit,
+										None,
+										lphpu_data,
+										default_contract_debug,
+									).result?;
+									
+									// STEP 2: Return the equivalent PHPU to the source
+									let mut phpu_to = source.encode();
+									let mut phpu_value = (quantity * decimal_multiplier.clone()).encode();
+									let mut phpu_data = Vec::new();
+									phpu_data.append(&mut phpu_contract_message_transfer_selector);
+									phpu_data.append(&mut phpu_to);
+									phpu_data.append(&mut phpu_value);
+									pallet_contracts::Pallet::<T>::bare_call(
+										source.clone(), 			
+										phpu_account.clone(),			
+										phpu_contract_value,
+										default_contract_gas_limit,
+										None,
+										phpu_data,
+										default_contract_debug,
+									).result?;
+
+									// STEP 3: Compute for the percentage - To be implemented
+
+
+									// STEP 4: Transfer the PHP interest from DEX account to the source - To be implemented
+
+
+									// STEP 5: Burn the lPHPU in the liquidity Account
+									let mut lphpu_burn_to = phpu_liquidity_account.encode();
+									let mut lphpu_burn_value = (quantity * decimal_multiplier.clone()).encode();
+									let mut lphpu_burn_data = Vec::new();
+									lphpu_burn_data.append(&mut default_message_burn_selector);
+									lphpu_burn_data.append(&mut lphpu_burn_to);
+									lphpu_burn_data.append(&mut lphpu_burn_value);
+									pallet_contracts::Pallet::<T>::bare_call(
+										dex_account.clone(), 			
+										phpu_liquidity_account.clone(),			
+										lphpu_contract_value,
+										default_contract_gas_limit,
+										None,
+										lphpu_burn_data,
+										default_contract_debug,
+									).result?;
+								
+									}, None => return Err(Error::<T>::NoPhpuAccount.into()),
+								}
+
+							}, None => return Err(Error::<T>::NoDexAccount.into()),
+						}
+
+					},None => return Err(Error::<T>::NoUmiLiquidityAccount.into()),
+				}
+
+			}
 
 			Self::deposit_event(Event::RedeemExecuted(source));
 			Ok(())
