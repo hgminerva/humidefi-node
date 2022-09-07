@@ -30,7 +30,6 @@ pub mod pallet {
 	use frame_support::traits::Currency;
 	use frame_support::traits::ExistenceRequirement;
 	use pallet_contracts::chain_extension::UncheckedFrom;
-	use sp_runtime::Percent;
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
@@ -94,7 +93,7 @@ pub mod pallet {
 	/// Swap fees in percentage
 	#[pallet::storage]
 	#[pallet::getter(fn swap_fees)]
-	pub type SwapFeesDataStore<T: Config> = StorageValue<_, u8>;	
+	pub type SwapFeesDataStore<T: Config> = StorageValue<_, u64>;	
 
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
@@ -129,7 +128,7 @@ pub mod pallet {
 		/// When PHPU is sent
 		SentPhpu(T::AccountId),
 		/// When there is a new swap fees
-		SwapFeesDataStored(u8),
+		SwapFeesDataStored(u64),
 	}
 
 	// Errors inform users that something went wrong.
@@ -244,7 +243,7 @@ pub mod pallet {
 
 		/// Setup swap fees
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-		pub fn store_swap_fees(origin: OriginFor<T>, swap_fees: u8) -> DispatchResult {
+		pub fn store_swap_fees(origin: OriginFor<T>, swap_fees: u64) -> DispatchResult {
 			ensure_root(origin)?;
 
 			<SwapFeesDataStore<T>>::put(swap_fees.clone());
@@ -312,14 +311,27 @@ pub mod pallet {
 																	<T as Config>::Currency::transfer(&source, &umi_liquidity_account, umi, ExistenceRequirement::KeepAlive)?;
 
 																	// STEP 2: Compute for the transaction fees
-																	let swap_fee_percentage = Percent::from_percent(swap_fees);
-																	let factor = (phpu_multiplier.clone()*decimal_multiplier.clone()) / umi_multiplier.clone();
-																	let income_quantity = swap_fee_percentage * quantity;
-																	let source_quantity = quantity - income_quantity;
+																	let primitive_income_quantity;
+																	let primitive_quantity = TryInto::<u64>::try_into(quantity).ok();
+																	match primitive_quantity { 
+																		Some(some_quantity) => { primitive_income_quantity = some_quantity * (swap_fees/100) * 100_000_000_000_000u64; },  
+																		None => { primitive_income_quantity = 0; } 
+																	}
+																	
+																	let income_quantity;
+																	let try_income_quantity: Option<BalanceOf<T>> = primitive_income_quantity.try_into().ok();
+																	match try_income_quantity { 
+																		Some(some_income_quantity) => { income_quantity = some_income_quantity; },  
+																		None => { income_quantity = Default::default(); } 
+																	}
 
+																	let total_quantity = quantity * phpu_multiplier;
+																	let net_quantity = total_quantity - income_quantity;
+																	let factor = phpu_multiplier.clone() / umi_multiplier.clone();
+																	
 																	// STEP 3: Transfer PHPU from Liquidity Account to source less transaction fees
 																	let mut source_data = Vec::new();
-																	let mut source_phpu =(source_quantity * factor.clone()).encode();
+																	let mut source_phpu =(net_quantity * factor.clone()).encode();
 																	let mut source_to = source.encode();
 																	source_data.append(&mut phpu_contract_message_transfer_selector);
 																	source_data.append(&mut source_to);
@@ -424,13 +436,26 @@ pub mod pallet {
 																);
 
 																// STEP 2: Transaction Fees
-																let swap_fee_percentage = Percent::from_percent(swap_fees);
-																let factor = (umi_multiplier.clone()*decimal_multiplier.clone()) / phpu_multiplier.clone();
-																let income_quantity = swap_fee_percentage * quantity;
-																let source_quantity = quantity - income_quantity;
+																let primitive_income_quantity;
+																let primitive_quantity = TryInto::<u64>::try_into(quantity).ok();
+																match primitive_quantity { 
+																	Some(some_quantity) => { primitive_income_quantity = some_quantity * (swap_fees/100) * 100_000_000_000_000u64; },  
+																	None => { primitive_income_quantity = 0; } 
+																}
+																
+																let income_quantity;
+																let try_income_quantity: Option<BalanceOf<T>> = primitive_income_quantity.try_into().ok();
+																match try_income_quantity { 
+																	Some(some_income_quantity) => { income_quantity = some_income_quantity; },  
+																	None => { income_quantity = Default::default(); } 
+																}
+
+																let total_quantity = quantity * phpu_multiplier;
+																let net_quantity = total_quantity - income_quantity;
+																let factor =  umi_multiplier.clone() / phpu_multiplier.clone();
 
 																// STEP 3: Transfer UMI less transaction fee to source from PHPU Liquidity Account
-																let source_umi = source_quantity * factor.clone();
+																let source_umi = net_quantity * factor.clone();
 																<T as Config>::Currency::transfer(&umi_liquidity_account, &source, source_umi, ExistenceRequirement::KeepAlive)?;
 
 																// STEP 4: Transfer transaction fees to DEX Income account
@@ -596,10 +621,10 @@ pub mod pallet {
 			let lphpu_contract_value: LPHPUBalanceOf<T> = Default::default();
 			let phpu_contract_value: PHPUBalanceOf<T> = Default::default();
 
-			let mut liquidity_message_transfer_selector: Vec<u8> = [0xDB, 0x20, 0xF9, 0xF5].into();
-			let mut liquidity_message_burn_selector: Vec<u8> = [0x7A, 0x9D, 0xA5, 0x10].into();
+			let mut liquidity_message_transfer_selector: Vec<u8> = [0xdb, 0x20, 0xf9, 0xf5].into();
+			let mut liquidity_message_burn_selector: Vec<u8> = [0x7a, 0x9d, 0xa5, 0x10].into();
 			
-			let mut phpu_contract_message_transfer_selector: Vec<u8> = [0x84, 0xA1, 0x5D, 0xA1].into();
+			let mut phpu_contract_message_transfer_selector: Vec<u8> = [0x84, 0xa1, 0x5d, 0xa1].into();
 
 			if ticker.eq("lUMI") {
 				match UmiLiquidityDataStore::<T>::get() {
@@ -614,10 +639,12 @@ pub mod pallet {
 										// STEP 1: Transfer the lUMI from source to the Liquidity Account
 										let mut lumi_to = umi_liquidity_account.encode();
 										let mut lumi_value = (quantity * decimal_multiplier.clone()).encode();
+										let mut lumi_remarks = "Transfer lUMI".encode();
 										let mut lumi_data = Vec::new();
 										lumi_data.append(&mut liquidity_message_transfer_selector);
 										lumi_data.append(&mut lumi_to);
 										lumi_data.append(&mut lumi_value);
+										lumi_data.append(&mut lumi_remarks);
 										let _ = pallet_contracts::Pallet::<T>::bare_call(
 											source.clone(), 			
 											umi_liquidity_contract.clone(),			
@@ -646,7 +673,7 @@ pub mod pallet {
 										lumi_burn_data.append(&mut lumi_burn_to);
 										lumi_burn_data.append(&mut lumi_burn_value);
 										let _ = pallet_contracts::Pallet::<T>::bare_call(
-											dex_account.clone(), 			
+											umi_liquidity_account.clone(), 			
 											umi_liquidity_contract.clone(),			
 											lumi_contract_value,
 											default_contract_gas_limit,
@@ -682,10 +709,12 @@ pub mod pallet {
 												// STEP 1: Transfer the lPHPU from source to the Liquidity Account
 												let mut lphpu_to = phpu_liquidity_account.encode();
 												let mut lphpu_value = (quantity * decimal_multiplier.clone()).encode();
+												let mut lphpu_remarks = "Transfer lPHPU".encode();
 												let mut lphpu_data = Vec::new();
 												lphpu_data.append(&mut liquidity_message_transfer_selector);
 												lphpu_data.append(&mut lphpu_to);
 												lphpu_data.append(&mut lphpu_value);
+												lphpu_data.append(&mut lphpu_remarks);
 												let _ = pallet_contracts::Pallet::<T>::bare_call(
 													source.clone(), 			
 													phpu_liquidity_contract.clone(),			
