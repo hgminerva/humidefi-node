@@ -286,10 +286,10 @@ pub mod pallet {
 						let umi_price_balance: Option<BalanceOf<T>> = umi_price.try_into().ok();
 						let phpu_price_balance: Option<BalanceOf<T>> = phpu_price.try_into().ok();
 
-						let umi_multiplier;
-						let phpu_multiplier;
-						match umi_price_balance { Some(multiplier) => { umi_multiplier = multiplier; },  None => { umi_multiplier = Default::default(); } };
-						match phpu_price_balance { Some(multiplier) => { phpu_multiplier = multiplier; },  None => { phpu_multiplier = Default::default(); } };
+						//let umi_multiplier;
+						//let phpu_multiplier;
+						//match umi_price_balance { Some(multiplier) => { umi_multiplier = multiplier; },  None => { umi_multiplier = Default::default(); } };
+						//match phpu_price_balance { Some(multiplier) => { phpu_multiplier = multiplier; },  None => { phpu_multiplier = Default::default(); } };
 						
 						match DexAccountDataStore::<T>::get() { 
 							Some(dex_account) => {
@@ -311,27 +311,42 @@ pub mod pallet {
 																	<T as Config>::Currency::transfer(&source, &umi_liquidity_account, umi, ExistenceRequirement::KeepAlive)?;
 
 																	// STEP 2: Compute for the transaction fees
-																	let primitive_income_quantity;
-																	let primitive_quantity = TryInto::<u64>::try_into(quantity).ok();
-																	match primitive_quantity { 
-																		Some(some_quantity) => { primitive_income_quantity = some_quantity * (swap_fees/100) * 100_000_000_000_000u64; },  
-																		None => { primitive_income_quantity = 0; } 
+																	let primitive_quantity: u64;
+																	let try_primitive_quantity = TryInto::<u64>::try_into(quantity).ok();
+																	match try_primitive_quantity { 
+																		Some(some_primitive_quantity) => { 
+																			primitive_quantity = some_primitive_quantity;
+																		}, 
+																		None => { 
+																			primitive_quantity = 0u64;
+																		}
 																	}
-																	
+
+																	let floating_conversion = (phpu_price as f64) / (umi_price as f64);
+																	let floating_decimal_multiplier = 100_000_000_000_000f64;
+																	let floating_swap_fee = (swap_fees as f64) / 100f64;
+																	let floating_primitive_quantity = primitive_quantity as f64;
+
+																	let primitive_income_quantity = floating_primitive_quantity * floating_swap_fee * floating_conversion * floating_decimal_multiplier;
+																	let primitive_net_quantity = (floating_primitive_quantity * floating_decimal_multiplier * floating_conversion) - primitive_income_quantity;
+
 																	let income_quantity;
-																	let try_income_quantity: Option<BalanceOf<T>> = primitive_income_quantity.try_into().ok();
+																	let try_income_quantity: Option<BalanceOf<T>> = (primitive_income_quantity as u64).try_into().ok();
 																	match try_income_quantity { 
 																		Some(some_income_quantity) => { income_quantity = some_income_quantity; },  
 																		None => { income_quantity = Default::default(); } 
 																	}
 
-																	let total_quantity = quantity * phpu_multiplier;
-																	let net_quantity = total_quantity - income_quantity;
-																	let factor = phpu_multiplier.clone() / umi_multiplier.clone();
-																	
+																	let net_quantity;
+																	let try_total_quantity: Option<BalanceOf<T>> = (primitive_net_quantity as u64).try_into().ok();
+																	match try_total_quantity { 
+																		Some(some_total_quantity) => { net_quantity = some_total_quantity; },  
+																		None => { net_quantity = Default::default(); } 
+																	}
+
 																	// STEP 3: Transfer PHPU from Liquidity Account to source less transaction fees
 																	let mut source_data = Vec::new();
-																	let mut source_phpu =(net_quantity * factor.clone()).encode();
+																	let mut source_phpu = net_quantity.encode();
 																	let mut source_to = source.encode();
 																	source_data.append(&mut phpu_contract_message_transfer_selector);
 																	source_data.append(&mut source_to);
@@ -349,7 +364,7 @@ pub mod pallet {
 
 																	// STEP 4: Transfer PHPU transaction fees to DEX income 
 																	let mut income_data = Vec::new();
-																	let mut income_phpu =(income_quantity * factor.clone()).encode();
+																	let mut income_phpu = income_quantity.encode();
 																	let mut income_to = dex_account.encode();
 																	income_data.append(&mut phpu_contract_message_transfer_selector);
 																	income_data.append(&mut income_to);
@@ -368,7 +383,7 @@ pub mod pallet {
 																}, None => return Err(Error::<T>::NoPhpuLiquidityAccount.into()),
 															}
 
-														}, None => return Err(Error::<T>::NoPhpuLiquidityAccount.into()),
+														}, None => return Err(Error::<T>::NoUmiLiquidityAccount.into()),
 													}
 
 											}, None => return Err(Error::<T>::NoSwapFees.into()),
@@ -436,30 +451,45 @@ pub mod pallet {
 																);
 
 																// STEP 2: Transaction Fees
-																let primitive_income_quantity;
-																let primitive_quantity = TryInto::<u64>::try_into(quantity).ok();
-																match primitive_quantity { 
-																	Some(some_quantity) => { primitive_income_quantity = some_quantity * (swap_fees/100) * 100_000_000_000_000u64; },  
-																	None => { primitive_income_quantity = 0; } 
+																let primitive_quantity: u64;
+																let try_primitive_quantity = TryInto::<u64>::try_into(quantity).ok();
+																match try_primitive_quantity { 
+																	Some(some_primitive_quantity) => { 
+																		primitive_quantity = some_primitive_quantity;
+																	}, 
+																	None => { 
+																		primitive_quantity = 0u64;
+																	}
 																}
-																
+
+																let floating_conversion = (umi_price as f64) / (phpu_price as f64);
+																let floating_decimal_multiplier = 100_000_000_000_000f64;
+																let floating_swap_fee = (swap_fees as f64) / 100f64;
+																let floating_primitive_quantity = primitive_quantity as f64;
+
+																let primitive_income_quantity = floating_primitive_quantity * floating_swap_fee * floating_conversion * floating_decimal_multiplier;
+																let primitive_net_quantity = (floating_primitive_quantity * floating_decimal_multiplier * floating_conversion) - primitive_income_quantity;
+
 																let income_quantity;
-																let try_income_quantity: Option<BalanceOf<T>> = primitive_income_quantity.try_into().ok();
+																let try_income_quantity: Option<BalanceOf<T>> = (primitive_income_quantity as u64).try_into().ok();
 																match try_income_quantity { 
 																	Some(some_income_quantity) => { income_quantity = some_income_quantity; },  
 																	None => { income_quantity = Default::default(); } 
 																}
 
-																let total_quantity = quantity * phpu_multiplier;
-																let net_quantity = total_quantity - income_quantity;
-																let factor =  umi_multiplier.clone() / phpu_multiplier.clone();
+																let net_quantity;
+																let try_total_quantity: Option<BalanceOf<T>> = (primitive_net_quantity as u64).try_into().ok();
+																match try_total_quantity { 
+																	Some(some_total_quantity) => { net_quantity = some_total_quantity; },  
+																	None => { net_quantity = Default::default(); } 
+																}
 
 																// STEP 3: Transfer UMI less transaction fee to source from PHPU Liquidity Account
-																let source_umi = net_quantity * factor.clone();
+																let source_umi = net_quantity;
 																<T as Config>::Currency::transfer(&umi_liquidity_account, &source, source_umi, ExistenceRequirement::KeepAlive)?;
 
 																// STEP 4: Transfer transaction fees to DEX Income account
-																let income_umi = income_quantity * factor.clone();
+																let income_umi = income_quantity;
 																<T as Config>::Currency::transfer(&umi_liquidity_account, &dex_account, income_umi, ExistenceRequirement::KeepAlive)?;
 
 															}, None => return Err(Error::<T>::NoPhpuLiquidityAccount.into()),
