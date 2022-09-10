@@ -7,4 +7,7 @@
 --telemetry-url "wss://telemetry.polkadot.io/submit/ 0" \
 --validator \
 --rpc-methods Unsafe \
+--rpc-cors all \
+--ws-external \
+--rpc-external \
 --name MyNode01
