@@ -18,4 +18,11 @@
 # keys
 testNetKeys.txt
 testNetSpec.json
+<<<<<<< HEAD
 substrate-testnet-node02-run.sh
+=======
+substrate-testnet-bootnode-run.sh
+substrate-testnet-node02-run.sh
+*json.bak
+
+>>>>>>> 920d0b401acf62a282248c39cbe28af4eb6a237c
