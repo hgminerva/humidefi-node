@@ -59,12 +59,3 @@ Make sure you install Subkey utility first.
 $ subkey generate --scheme sr25519
 $ subkey inspect --scheme ed25519 "<generated_secret_phrase>"
 ```
-
-## Run Node in Testnet Mode
-
-Make sure to run the two shell into two separate terminals.  Sometimes the node id of the bootnode will change, if so modify the node02 shell to match the bootnode node id.
-
-```sh
-$ ./substrate-testnet-bootnode-run.sh
-$ ./substrate-testnet-node02-run.sh
-```
