@@ -253,12 +253,11 @@ pub mod pallet {
 			Ok(())
 		}
 
-		/// Swap token
+		// Swap ticker/token
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-		pub fn do_swap(origin: OriginFor<T>, source: T::AccountId, quantity:  BalanceOf<T>, source_ticker: Vec<u8>, destination_ticker: Vec<u8>,) -> DispatchResult {
+		pub fn do_swap(origin: OriginFor<T>, source: T::AccountId, quantity:  BalanceOf<T>, source_ticker: Vec<u8>, destination_ticker: Vec<u8>,) -> DispatchResult  {
 			let _who = ensure_signed(origin)?;
 
-			// Ticker
 			let ticker1 = scale_info::prelude::string::String::from_utf8(source_ticker).expect("Invalid");
 			let ticker2 = scale_info::prelude::string::String::from_utf8(destination_ticker).expect("Invalid");
 
@@ -267,254 +266,171 @@ pub mod pallet {
 			let decimal_multiplier;
 			match decimal { Some(multiplier) => { decimal_multiplier = multiplier; },  None => { decimal_multiplier = Default::default(); } };
 
-			// PHPU Contract Settings
-			let phpu_contract_gas_limit = 10_000_000_000;
+			// Contract settings
+			let phpu_contract_gas_limit:u64 = 10_000_000_000;
 			let phpu_contract_debug = false;
 			let phpu_contract_value: PHPUBalanceOf<T> = Default::default();
-			let mut phpu_contract_message_transfer_selector: Vec<u8> = [0x84, 0xA1, 0x5D, 0xA1].into();
+			let mut phpu_contract_transfer_message_selector: Vec<u8> = [0xdb, 0x20, 0xf9, 0xf5].into();
+			let mut phpu_contract_swap_message_selector: Vec<u8> = [0xc4, 0x05, 0xe9, 0x82].into();
 
-			// UMI -> PHPU
+			let dex_account;
+			match DexAccountDataStore::<T>::get() { 
+				Some(some_dex_account) => dex_account = some_dex_account,
+				None => return Err(Error::<T>::NoDexAccount.into()),
+			}
+
+			let phpu_liquidity_account;
+			match PhpuLiquidityAccountDataStore::<T>::get() { 
+				Some(some_phpu_liquidity_account) => phpu_liquidity_account = some_phpu_liquidity_account,
+				None => return Err(Error::<T>::NoPhpuLiquidityAccount.into()),
+			}
+
+			let umi_liquidity_account;
+			match UmiLiquidityAccountDataStore::<T>::get() { 
+				Some(some_umi_liquidity_account) => umi_liquidity_account = some_umi_liquidity_account,
+				None => return Err(Error::<T>::NoUmiLiquidityAccount.into()),
+			}
+
+			let phpu_contract;
+			match PhpuDataStore::<T>::get() {
+				Some(some_phpu_contract) => phpu_contract = some_phpu_contract,
+				None => return Err(Error::<T>::NoPhpuContract.into()),
+			}
+
+			let swap_fees;
+			match SwapFeesDataStore::<T>::get() {
+				Some(some_swap_fees) => swap_fees = some_swap_fees,
+				None => return Err(Error::<T>::NoSwapFees.into()),
+			}
+
+			// Primitive quantity - used for conversion computation
+			let primitive_quantity: u64;
+			let try_primitive_quantity = TryInto::<u64>::try_into(quantity).ok();
+			match try_primitive_quantity { 
+				Some(some_primitive_quantity) => primitive_quantity = some_primitive_quantity, 
+				None => primitive_quantity = 0u64,
+			}			
+
+			// Ticker prices
+			let ticker_price_data;
+			match TickerDataStore::<T>::get() {
+				Some(some_ticker_price_data) => ticker_price_data = some_ticker_price_data,
+				None => return Err(Error::<T>::NoTickerPriceData.into()),
+			}
+			let value_string = scale_info::prelude::string::String::from_utf8(ticker_price_data).expect("Invalid");
+			let v: serde_json::Value = serde_json::from_str(&value_string).map_err(|_| <Error<T>>::TickerPriceDataInvalid)?;
+			let umi_price: u64 = serde_json::from_value(v[0]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
+			let phpu_price: u64 = serde_json::from_value(v[1]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
+
 			if ticker1.eq("UMI") && ticker2.eq("PHPU") {
-				match TickerDataStore::<T>::get() {
-					Some(ticker_price_data) => {
 
-						// Conversion
-						let value_string = scale_info::prelude::string::String::from_utf8(ticker_price_data).expect("Invalid");
-						let v: serde_json::Value = serde_json::from_str(&value_string).map_err(|_| <Error<T>>::TickerPriceDataInvalid)?;
-						let umi_price: u64 = serde_json::from_value(v[0]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
-						let phpu_price: u64 = serde_json::from_value(v[1]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
-						let umi_price_balance: Option<BalanceOf<T>> = umi_price.try_into().ok();
-						let phpu_price_balance: Option<BalanceOf<T>> = phpu_price.try_into().ok();
+				// Step 1: Transfer UMI to Liquidity Account
+				let umi = quantity * decimal_multiplier.clone();
+				<T as Config>::Currency::transfer(&source, &umi_liquidity_account, umi, ExistenceRequirement::KeepAlive)?;
 
-						//let umi_multiplier;
-						//let phpu_multiplier;
-						//match umi_price_balance { Some(multiplier) => { umi_multiplier = multiplier; },  None => { umi_multiplier = Default::default(); } };
-						//match phpu_price_balance { Some(multiplier) => { phpu_multiplier = multiplier; },  None => { phpu_multiplier = Default::default(); } };
-						
-						match DexAccountDataStore::<T>::get() { 
-							Some(dex_account) => {
+				// Step 2: Compute for conversion
+				let floating_conversion = (phpu_price as f64) / (umi_price as f64);
+				let floating_decimal_multiplier = 100_000_000_000_000f64;
+				let floating_swap_fee = (swap_fees as f64) / 100f64;
+				let floating_primitive_quantity = primitive_quantity as f64;
 
-								match PhpuDataStore::<T>::get() { 
-									Some(phpu_contract) => {
+				let primitive_income_quantity = floating_primitive_quantity * floating_swap_fee * floating_conversion * floating_decimal_multiplier;
+				let primitive_net_quantity = (floating_primitive_quantity * floating_decimal_multiplier * floating_conversion) - primitive_income_quantity;
 
-										match SwapFeesDataStore::<T>::get() {
-											Some(swap_fees) => {
+				let income_quantity: PHPUBalanceOf<T>;
+				let try_income_quantity: Option<PHPUBalanceOf<T>> = (primitive_income_quantity as u64).try_into().ok();
+				match try_income_quantity { 
+					Some(some_income_quantity) => { income_quantity = some_income_quantity; },  
+					None => { income_quantity = Default::default(); } 
+				}
 
-													match UmiLiquidityAccountDataStore::<T>::get() { 
-														Some(umi_liquidity_account) => {
-															
-															match PhpuLiquidityAccountDataStore::<T>::get() { 
-																Some(phpu_liquidity_account) => {
+				let net_quantity: PHPUBalanceOf<T>;
+				let try_total_quantity: Option<PHPUBalanceOf<T>> = (primitive_net_quantity as u64).try_into().ok();
+				match try_total_quantity { 
+					Some(some_total_quantity) => { net_quantity = some_total_quantity; },  
+					None => { net_quantity = Default::default(); } 
+				}
+				
+				// Step 3: Transfer PHPU to Source and DEX
+				let mut source_to = source.encode();
+				let mut source_phpu = net_quantity.encode();
+				let mut collector_to = dex_account.encode();
+				let mut collector_fee_phpu = income_quantity.encode();
 
-																	// STEP 1: Transfer UMI from source to Liquidity UMI Account
-																	let umi = quantity * decimal_multiplier.clone();
-																	<T as Config>::Currency::transfer(&source, &umi_liquidity_account, umi, ExistenceRequirement::KeepAlive)?;
-
-																	// STEP 2: Compute for the transaction fees
-																	let primitive_quantity: u64;
-																	let try_primitive_quantity = TryInto::<u64>::try_into(quantity).ok();
-																	match try_primitive_quantity { 
-																		Some(some_primitive_quantity) => { 
-																			primitive_quantity = some_primitive_quantity;
-																		}, 
-																		None => { 
-																			primitive_quantity = 0u64;
-																		}
-																	}
-
-																	let floating_conversion = (phpu_price as f64) / (umi_price as f64);
-																	let floating_decimal_multiplier = 100_000_000_000_000f64;
-																	let floating_swap_fee = (swap_fees as f64) / 100f64;
-																	let floating_primitive_quantity = primitive_quantity as f64;
-
-																	let primitive_income_quantity = floating_primitive_quantity * floating_swap_fee * floating_conversion * floating_decimal_multiplier;
-																	let primitive_net_quantity = (floating_primitive_quantity * floating_decimal_multiplier * floating_conversion) - primitive_income_quantity;
-
-																	let income_quantity;
-																	let try_income_quantity: Option<BalanceOf<T>> = (primitive_income_quantity as u64).try_into().ok();
-																	match try_income_quantity { 
-																		Some(some_income_quantity) => { income_quantity = some_income_quantity; },  
-																		None => { income_quantity = Default::default(); } 
-																	}
-
-																	let net_quantity;
-																	let try_total_quantity: Option<BalanceOf<T>> = (primitive_net_quantity as u64).try_into().ok();
-																	match try_total_quantity { 
-																		Some(some_total_quantity) => { net_quantity = some_total_quantity; },  
-																		None => { net_quantity = Default::default(); } 
-																	}
-
-																	// STEP 3: Transfer PHPU from Liquidity Account to source less transaction fees
-																	let mut source_data = Vec::new();
-																	let mut source_phpu = net_quantity.encode();
-																	let mut source_to = source.encode();
-																	source_data.append(&mut phpu_contract_message_transfer_selector);
-																	source_data.append(&mut source_to);
-																	source_data.append(&mut source_phpu);
-
-																	let _ = pallet_contracts::Pallet::<T>::bare_call(
-																		phpu_liquidity_account.clone(), 			
-																		phpu_contract.clone(),			
-																		phpu_contract_value,
-																		phpu_contract_gas_limit,
-																		None,
-																		source_data,
-																		phpu_contract_debug,
-																	);
-
-																	// STEP 4: Transfer PHPU transaction fees to DEX income 
-																	let mut income_data = Vec::new();
-																	let mut income_phpu = income_quantity.encode();
-																	let mut income_to = dex_account.encode();
-																	income_data.append(&mut phpu_contract_message_transfer_selector);
-																	income_data.append(&mut income_to);
-																	income_data.append(&mut income_phpu);
-
-																	let _ = pallet_contracts::Pallet::<T>::bare_call(
-																		phpu_liquidity_account.clone(), 			
-																		phpu_contract.clone(),			
-																		phpu_contract_value,
-																		phpu_contract_gas_limit,
-																		None,
-																		income_data,
-																		phpu_contract_debug,
-																	);
-
-																}, None => return Err(Error::<T>::NoPhpuLiquidityAccount.into()),
-															}
-
-														}, None => return Err(Error::<T>::NoUmiLiquidityAccount.into()),
-													}
-
-											}, None => return Err(Error::<T>::NoSwapFees.into()),
-										}
-
-									}, None => return Err(Error::<T>::NoPhpuContract.into()),
-								}
-
-							} , None => return Err(Error::<T>::NoDexAccount.into()),
-						} 
-
-					}, None => return Err(Error::<T>::NoTickerPriceData.into()),
-				}	
+				let mut phpu_data = Vec::new();
+				phpu_data.append(&mut phpu_contract_swap_message_selector);
+				phpu_data.append(&mut source_to);
+				phpu_data.append(&mut source_phpu);
+				phpu_data.append(&mut collector_to);
+				phpu_data.append(&mut collector_fee_phpu);
+	
+				let _ = pallet_contracts::Pallet::<T>::bare_call(
+					phpu_liquidity_account.clone(), 			
+					phpu_contract.clone(),			
+					phpu_contract_value,
+					phpu_contract_gas_limit,
+					None,
+					phpu_data,
+					phpu_contract_debug,
+				);
 
 			}
 
-			// PHPU -> UMI
 			if ticker1.eq("PHPU") && ticker2.eq("UMI") {
-				match TickerDataStore::<T>::get() {
-					Some(ticker_price_data) => {
 
-						// Conversion
-						let value_string = scale_info::prelude::string::String::from_utf8(ticker_price_data).expect("Invalid");
-						let v: serde_json::Value = serde_json::from_str(&value_string).map_err(|_| <Error<T>>::TickerPriceDataInvalid)?;
-						let umi_price: u64 = serde_json::from_value(v[0]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
-						let phpu_price: u64 = serde_json::from_value(v[1]["price_in_usd"].clone()).map_err(|_| <Error<T>>::TickerPriceInvalid)?;
-						let umi_price_balance: Option<BalanceOf<T>> = umi_price.try_into().ok();
-						let phpu_price_balance: Option<BalanceOf<T>> = phpu_price.try_into().ok();
+				// Step 1: Transfer PHPU to Liquidity Account				
+				let mut phpu_to = phpu_liquidity_account.encode();
+				let mut phpu_value = (quantity * decimal_multiplier).encode();
+				let mut phpu_remarks = "Transfer source PHPU".encode();
 
-						let umi_multiplier;
-						let phpu_multiplier;
-						match umi_price_balance { Some(multiplier) => { umi_multiplier = multiplier; },  None => { umi_multiplier = Default::default(); } };
-						match phpu_price_balance { Some(multiplier) => { phpu_multiplier = multiplier; },  None => { phpu_multiplier = Default::default(); } };
+				let mut phpu_data = Vec::new();
+				phpu_data.append(&mut phpu_contract_transfer_message_selector);
+				phpu_data.append(&mut phpu_to);
+				phpu_data.append(&mut phpu_value);
+				phpu_data.append(&mut phpu_remarks);
 
-						match DexAccountDataStore::<T>::get() {
-							Some(dex_account) => { // DEX Account
+				let _ = pallet_contracts::Pallet::<T>::bare_call(
+					source.clone(), 			
+					phpu_contract.clone(),			
+					phpu_contract_value.clone(),
+					phpu_contract_gas_limit.clone(),
+					None,
+					phpu_data,
+					phpu_contract_debug,
+				);
 
-								match PhpuDataStore::<T>::get() {
-									Some(phpu_contract) => { 
+				// Step 2: Compute for conversion
+				let floating_conversion = (umi_price as f64) / (phpu_price as f64);
+				let floating_decimal_multiplier = 100_000_000_000_000f64;
+				let floating_swap_fee = (swap_fees as f64) / 100f64;
+				let floating_primitive_quantity = primitive_quantity as f64;
 
-										match SwapFeesDataStore::<T>::get() { 
-											Some(swap_fees) => {
+				let primitive_income_quantity = floating_primitive_quantity * floating_swap_fee * floating_conversion * floating_decimal_multiplier;
+				let primitive_net_quantity = (floating_primitive_quantity * floating_decimal_multiplier * floating_conversion) - primitive_income_quantity;
 
-												match UmiLiquidityAccountDataStore::<T>::get() { 
-													Some(umi_liquidity_account) => {
-														
-														match PhpuLiquidityAccountDataStore::<T>::get() { 
-															Some(phpu_liquidity_account) => {
-
-																// STEP 1: Transfer PHPU from source to PHPU Liquidity Account
-																let mut to = phpu_liquidity_account.encode();
-																let mut phpu = (quantity * decimal_multiplier.clone()).encode();
-																let mut data = Vec::new();
-																data.append(&mut phpu_contract_message_transfer_selector);
-																data.append(&mut to);
-																data.append(&mut phpu);
-																let _ = pallet_contracts::Pallet::<T>::bare_call(
-																	source.clone(), 			
-																	phpu_contract,			
-																	phpu_contract_value,
-																	phpu_contract_gas_limit,
-																	None,
-																	data,
-																	phpu_contract_debug,
-																);
-
-																// STEP 2: Transaction Fees
-																let primitive_quantity: u64;
-																let try_primitive_quantity = TryInto::<u64>::try_into(quantity).ok();
-																match try_primitive_quantity { 
-																	Some(some_primitive_quantity) => { 
-																		primitive_quantity = some_primitive_quantity;
-																	}, 
-																	None => { 
-																		primitive_quantity = 0u64;
-																	}
-																}
-
-																let floating_conversion = (umi_price as f64) / (phpu_price as f64);
-																let floating_decimal_multiplier = 100_000_000_000_000f64;
-																let floating_swap_fee = (swap_fees as f64) / 100f64;
-																let floating_primitive_quantity = primitive_quantity as f64;
-
-																let primitive_income_quantity = floating_primitive_quantity * floating_swap_fee * floating_conversion * floating_decimal_multiplier;
-																let primitive_net_quantity = (floating_primitive_quantity * floating_decimal_multiplier * floating_conversion) - primitive_income_quantity;
-
-																let income_quantity;
-																let try_income_quantity: Option<BalanceOf<T>> = (primitive_income_quantity as u64).try_into().ok();
-																match try_income_quantity { 
-																	Some(some_income_quantity) => { income_quantity = some_income_quantity; },  
-																	None => { income_quantity = Default::default(); } 
-																}
-
-																let net_quantity;
-																let try_total_quantity: Option<BalanceOf<T>> = (primitive_net_quantity as u64).try_into().ok();
-																match try_total_quantity { 
-																	Some(some_total_quantity) => { net_quantity = some_total_quantity; },  
-																	None => { net_quantity = Default::default(); } 
-																}
-
-																// STEP 3: Transfer UMI less transaction fee to source from PHPU Liquidity Account
-																let source_umi = net_quantity;
-																<T as Config>::Currency::transfer(&umi_liquidity_account, &source, source_umi, ExistenceRequirement::KeepAlive)?;
-
-																// STEP 4: Transfer transaction fees to DEX Income account
-																let income_umi = income_quantity;
-																<T as Config>::Currency::transfer(&umi_liquidity_account, &dex_account, income_umi, ExistenceRequirement::KeepAlive)?;
-
-															}, None => return Err(Error::<T>::NoPhpuLiquidityAccount.into()),
-														}
-
-													}, None => return Err(Error::<T>::NoUmiLiquidityAccount.into()),
-												}
-
-											}, None => return Err(Error::<T>::NoSwapFees.into()),
-										}
-
-									}, None => return Err(Error::<T>::NoPhpuContract.into()),
-								}
-
-							}, None => return Err(Error::<T>::NoDexAccount.into()),
-						}
-
-					}, None => return Err(Error::<T>::NoTickerPriceData.into()),
+				let income_quantity;
+				let try_income_quantity: Option<BalanceOf<T>> = (primitive_income_quantity as u64).try_into().ok();
+				match try_income_quantity { 
+					Some(some_income_quantity) => { income_quantity = some_income_quantity; },  
+					None => { income_quantity = Default::default(); } 
 				}
+
+				let net_quantity;
+				let try_total_quantity: Option<BalanceOf<T>> = (primitive_net_quantity as u64).try_into().ok();
+				match try_total_quantity { 
+					Some(some_total_quantity) => { net_quantity = some_total_quantity; },  
+					None => { net_quantity = Default::default(); } 
+				}
+
+				// Step 3: Transfer UMI to Source and DEX Account
+				<T as Config>::Currency::transfer(&umi_liquidity_account, &source, net_quantity, ExistenceRequirement::KeepAlive)?;
+				<T as Config>::Currency::transfer(&umi_liquidity_account, &dex_account, income_quantity, ExistenceRequirement::KeepAlive)?;
 
 			}
 
 			Self::deposit_event(Event::SwapExecuted(source));
-			
 			Ok(())
+
 		}
 
 		/// Stake token to get liquidity token
@@ -533,8 +449,9 @@ pub mod pallet {
 			let default_contract_gas_limit:u64 = 10_000_000_000;
 			let default_contract_debug = false;
 			let default_contract_value: PHPUBalanceOf<T> = Default::default();
-			let mut liquidity_contract_mint_message_selector: Vec<u8> = [0x1D, 0x2F, 0x13, 0xC5].into();
-			let mut phpu_contract_transfer_message_selector: Vec<u8> = [0x84, 0xA1, 0x5D, 0xA1].into();
+
+			let mut liquidity_contract_mint_to_message_selector: Vec<u8> = [0x1d, 0x2f, 0x13, 0xc5].into();
+			let mut phpu_contract_transfer_message_selector: Vec<u8> = [0xdb, 0x20, 0xf9, 0xf5].into();
 
 			if ticker.eq("UMI")  {
 				match UmiLiquidityAccountDataStore::<T>::get() {
@@ -551,7 +468,7 @@ pub mod pallet {
 								let mut lumi_to = source.encode();
 								let mut lumi_value = (quantity * decimal_multiplier).encode();
 								let mut lumi_data = Vec::new();
-								lumi_data.append(&mut liquidity_contract_mint_message_selector);
+								lumi_data.append(&mut liquidity_contract_mint_to_message_selector);
 								lumi_data.append(&mut lumi_to);
 								lumi_data.append(&mut lumi_value);
 								let _ = pallet_contracts::Pallet::<T>::bare_call(
@@ -585,10 +502,12 @@ pub mod pallet {
 										// STEP 1: Transfer PHPU to PHPU Liquidity Account								
 										let mut phpu_to = phpu_liquidity_account.encode();
 										let mut phpu_value = (quantity * decimal_multiplier).encode();
+										let mut phpu_remarks = "Transfer source PHPU".encode();
 										let mut phpu_data = Vec::new();
 										phpu_data.append(&mut phpu_contract_transfer_message_selector);
 										phpu_data.append(&mut phpu_to);
 										phpu_data.append(&mut phpu_value);
+										phpu_data.append(&mut phpu_remarks);
 										let _ = pallet_contracts::Pallet::<T>::bare_call(
 											source.clone(), 			
 											phpu_contract.clone(),			
@@ -603,7 +522,7 @@ pub mod pallet {
 										let mut lphpu_to = source.encode();
 										let mut lphpu_value = (quantity * decimal_multiplier).encode();
 										let mut lphpu_data = Vec::new();
-										lphpu_data.append(&mut liquidity_contract_mint_message_selector);
+										lphpu_data.append(&mut liquidity_contract_mint_to_message_selector);
 										lphpu_data.append(&mut lphpu_to);
 										lphpu_data.append(&mut lphpu_value);
 										let _ = pallet_contracts::Pallet::<T>::bare_call(
@@ -653,8 +572,7 @@ pub mod pallet {
 
 			let mut liquidity_message_transfer_selector: Vec<u8> = [0xdb, 0x20, 0xf9, 0xf5].into();
 			let mut liquidity_message_burn_selector: Vec<u8> = [0x7a, 0x9d, 0xa5, 0x10].into();
-			
-			let mut phpu_contract_message_transfer_selector: Vec<u8> = [0x84, 0xa1, 0x5d, 0xa1].into();
+			let mut phpu_contract_message_transfer_selector: Vec<u8> = [0xdb, 0x20, 0xf9, 0xf5].into();
 
 			if ticker.eq("lUMI") {
 				match UmiLiquidityDataStore::<T>::get() {
@@ -758,10 +676,12 @@ pub mod pallet {
 												// STEP 2: Return the equivalent PHPU to the source
 												let mut phpu_to = source.encode();
 												let mut phpu_value = (quantity * decimal_multiplier.clone()).encode();
+												let mut phpu_remarks = "Transfer PHPU to source".encode();
 												let mut phpu_data = Vec::new();
 												phpu_data.append(&mut phpu_contract_message_transfer_selector);
 												phpu_data.append(&mut phpu_to);
 												phpu_data.append(&mut phpu_value);
+												phpu_data.append(&mut phpu_remarks);
 												let _ = pallet_contracts::Pallet::<T>::bare_call(
 													phpu_liquidity_account.clone(), 			
 													phpu_contract.clone(),			
