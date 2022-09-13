@@ -1,0 +1,14 @@
+./target/release/node-template \
+--base-path /tmp/node02 \
+--chain ./testNetSpecRaw.json \
+--port 30333 \
+--ws-port 9944 \
+--rpc-port 9933 \
+--telemetry-url "wss://telemetry.polkadot.io/submit/ 0" \
+--validator \
+--rpc-cors all \
+--ws-external \
+--rpc-external \
+--rpc-methods Unsafe \
+--name MyNode02 \
+--bootnodes /dns/bootnode001.humidefi.com/tcp/30333/p2p/12D3KooWD1jkK5DBdizzjePXHBBJZWuQUfnRaftWPVBJ2KLJAyTN
