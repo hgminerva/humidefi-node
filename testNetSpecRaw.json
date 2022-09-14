@@ -6,6 +6,7 @@
   "telemetryEndpoints": null,
   "protocolId": null,
   "properties": {
+    "tokenDecimals": 14,
     "tokenSymbol": "UMI"
   },
   "codeSubstitutes": {},
